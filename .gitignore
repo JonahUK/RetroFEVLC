@@ -1,0 +1,40 @@
+*.orig
+*.suo
+*.user
+*.VC.db
+*.VC.opendb
+.vs/
+.git/
+Build/
+Build-Search-x64/
+Documentation/Documentation/*
+Documentation/Artifacts/*
+Documentation/Manual/_build/*
+Configuration/Configuration/bin/**
+Configuration/Configuration/obj/**
+Artifacts/**
+
+/Package/Environment/Windows/core/
+
+# RetroFEVLC - Windows x64 / LibVLC only
+
+# Obsolete GStreamer implementation
+/RetroFE/Source/Video/GStreamerVideo.cpp
+/RetroFE/Source/Video/GStreamerVideo.h
+
+# Unsupported platform packaging
+/Package/Environment/Linux/
+/Package/Environment/MacOS/
+
+# Raspberry Pi installation scripts
+/Scripts/Raspi/
+/Scripts/Raspi2/
+
+# Additional generated build directories
+/RetroFE/Build*/
+/Build*/
+
+# Python temporary files
+__pycache__/
+*.pyc
+
