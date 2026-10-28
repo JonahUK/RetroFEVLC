@@ -42,9 +42,10 @@ git clone https://github.com/JonahUK/RetroFEVLC.git
 
 ## Build for Windows x64
 
-Open PowerShell in the repository root and run:
+Open PowerShell in the directory where you cloned the repository, then run:
 
 ```powershell
+cd RetroFEVLC
 .\Scripts\Build-RetroFE.ps1
 ```
 
