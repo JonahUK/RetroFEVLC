@@ -654,6 +654,15 @@ void SearchOverlay::commit( )
     if ( query_.empty( ) ) return;
     if ( results_.empty( ) ) return;   // nothing matches: stay open and keep typing
 
+    // In List Mode, submitting from the keyboard moves focus to the
+    // results list. Only selecting a focused result can launch a game.
+    if ( listMode_ && zone_ != ZoneResults )
+    {
+        zone_ = ZoneResults;
+        ensureCursorVisible( );
+        return;
+    }
+
     // Page Mode keeps its original first-match selection.
     // List Mode uses the highlighted result when the results list has focus.
     size_t selected = 0;
