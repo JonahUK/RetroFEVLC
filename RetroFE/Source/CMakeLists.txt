@@ -293,9 +293,6 @@ if(WIN32)
 endif()
 set_target_properties(retrofe PROPERTIES LINKER_LANGUAGE CXX)
 
-add_definitions(-DRETROFE_VERSION_MAJOR=${VERSION_MAJOR})
-add_definitions(-DRETROFE_VERSION_MINOR=${VERSION_MINOR})
-add_definitions(-DRETROFE_VERSION_BUILD=${VERSION_BUILD})
 
 if(MSVC)
 	set(CMAKE_DEBUG_POSTFIX "d")
