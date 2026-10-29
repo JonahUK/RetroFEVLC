@@ -1,0 +1,41 @@
+﻿RetroFEVLC - Source Code Availability
+=====================================
+
+RetroFEVLC project source:
+https://github.com/JonahUK/RetroFEVLC
+
+Original RetroFE project:
+https://github.com/phulshof/RetroFE
+
+VideoLAN VLC
+------------
+Version: 3.0.24
+
+Official source archive:
+https://download.videolan.org/pub/videolan/vlc/3.0.24/vlc-3.0.24.tar.xz
+
+Official SHA256:
+e7cab503d1d7d5849b89d2cf0e1ee60d0ef6d012407791b644b9cfc0cc225fdf
+
+Official VLC website:
+https://www.videolan.org/
+
+RetroFEVLC bundles libvlc.dll, libvlccore.dll and
+326 VLC plugin DLLs.
+
+These 328 DLLs were verified as byte-for-byte matches
+to the official VLC 3.0.24 Windows x64 distribution.
+
+Third-party components
+----------------------
+Additional dependency licence files are supplied in
+the licenses/ThirdParty directory.
+
+Font licensing information is supplied in
+the licenses/Fonts directory.
+
+Important
+---------
+This document identifies available upstream source
+locations. It does not establish that all corresponding
+source-code distribution obligations have been fulfilled.

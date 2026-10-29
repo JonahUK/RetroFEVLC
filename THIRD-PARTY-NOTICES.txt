@@ -1,0 +1,71 @@
+﻿RetroFEVLC - Third-Party Notices
+================================
+
+RetroFEVLC is based on the original RetroFE project.
+Original RetroFE:
+https://github.com/phulshof/RetroFE
+
+RetroFEVLC:
+https://github.com/JonahUK/RetroFEVLC
+
+The project is distributed under GNU GPL version 3.
+See licenses/RetroFE-GPLv3.txt.
+
+VIDEOLAN VLC
+------------
+RetroFEVLC includes VLC 3.0.24 components supplied
+by the VideoLAN project:
+
+- libvlc.dll
+- libvlccore.dll
+- 326 VLC plugin DLLs
+
+These binaries match VideoLAN's official Windows x64
+VLC 3.0.24 distribution.
+
+VLC GPL and LGPL licence texts and contributor
+attributions are provided in the licenses directory.
+
+VLC components and bundled codec dependencies may be
+subject to different applicable licence terms.
+
+SDL AND OTHER DEPENDENCIES
+--------------------------
+The project includes SDL2, SDL2_image, SDL2_mixer,
+SDL2_ttf, RapidXML, SQLite and associated libraries.
+
+Collected licence notices are provided under
+licenses/ThirdParty.
+
+FONTS
+-----
+Bundled font families include:
+
+- Open Sans Hebrew Condensed
+- Bebas Neue
+- Ubuntu Condensed
+- Oswald
+- Roboto Condensed
+
+Licence information is provided under licenses/Fonts.
+
+The embedded licensing information for Bebas Neue
+version 1.002 differs from the designer's published
+licensing history. This discrepancy remains unresolved.
+
+LAYOUTS AND MEDIA
+-----------------
+The original RetroFE Aeon Nox layout, its existing
+credits and associated media have been preserved.
+
+Existing credits do not by themselves establish
+redistribution permission for every bundled asset.
+
+SOURCE CODE
+-----------
+See SOURCE-CODE-AVAILABILITY.txt for upstream source
+locations and the official VLC source archive.
+
+This notice identifies known components and collected
+licensing information. It does not certify that every
+redistribution requirement has been satisfied.
