@@ -18,11 +18,16 @@
 #include "Page.h"
 #include "../Collection/Item.h"
 #include "../Control/UserInput.h"
+#include "../Database/Configuration.h"
+#include "../Utility/Utils.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
+#include <map>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -186,6 +191,17 @@ SearchOverlay::~SearchOverlay( )
 void SearchOverlay::setListMode( bool enabled )
 {
     listMode_ = enabled;
+}
+
+
+namespace
+{
+    std::map<std::string, SDL_Color> loadSearchTheme( const std::string &name );
+}
+void SearchOverlay::setTheme( const std::string &name )
+{
+    themeName_ = name.empty( ) ? "default" : name;
+    themeColours_ = loadSearchTheme( themeName_ );
 }
 
 
@@ -758,6 +774,109 @@ namespace
         return c;
     }
 
+    // Parse #RRGGBB or R,G,B. Invalid values leave the colour unchanged.
+    bool parseThemeColour( const std::string &value, SDL_Color &colour )
+    {
+        std::string s = value;
+        const size_t first = s.find_first_not_of( " \t\r\n" );
+        if ( first == std::string::npos ) return false;
+        const size_t last = s.find_last_not_of( " \t\r\n" );
+        s = s.substr( first, last - first + 1 );
+
+        if ( s.size( ) == 7 && s[0] == '#' )
+        {
+            for ( size_t i = 1; i < 7; ++i )
+                if ( !std::isxdigit( static_cast<unsigned char>( s[i] ) ) )
+                    return false;
+
+            unsigned int r = 0, g = 0, b = 0;
+            if ( std::sscanf( s.c_str( ), "#%2x%2x%2x", &r, &g, &b ) != 3 )
+                return false;
+
+            colour = rgb( static_cast<int>( r ),
+                          static_cast<int>( g ),
+                          static_cast<int>( b ) );
+            return true;
+        }
+
+        int r = 0, g = 0, b = 0;
+        char comma1 = 0, comma2 = 0;
+        std::istringstream input( s );
+
+        if ( !( input >> r >> comma1 >> g >> comma2 >> b ) )
+            return false;
+
+        if ( comma1 != ',' || comma2 != ',' )
+            return false;
+
+        input >> std::ws;
+        if ( !input.eof( ) )
+            return false;
+
+        if ( r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255 )
+            return false;
+
+        colour = rgb( r, g, b );
+        return true;
+    }
+    // Read a search theme from the RetroFE configuration root.
+    // Invalid or missing entries are ignored.
+    std::map<std::string, SDL_Color> loadSearchTheme( const std::string &name )
+    {
+        std::map<std::string, SDL_Color> colours;
+
+        if ( name.empty( ) )
+            return colours;
+
+        // Theme names must be filenames, not paths.
+        if ( name.find_first_not_of(
+                 "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" )
+             != std::string::npos )
+            return colours;
+
+        const std::string path = Utils::combinePath(
+            Configuration::absolutePath, "search_themes", name + ".conf" );
+
+        std::ifstream file( path.c_str( ) );
+        if ( !file )
+            return colours;
+
+        std::string line;
+        while ( std::getline( file, line ) )
+        {
+            const size_t equals = line.find( '=' );
+            if ( equals == std::string::npos )
+                continue;
+
+            std::string key = line.substr( 0, equals );
+            std::string value = line.substr( equals + 1 );
+
+            const size_t first = key.find_first_not_of( " \t\r\n" );
+            if ( first == std::string::npos )
+                continue;
+
+            const size_t last = key.find_last_not_of( " \t\r\n" );
+            key = key.substr( first, last - first + 1 );
+
+            if ( key.empty( ) || key[0] == '#' || key[0] == ';' )
+                continue;
+
+            SDL_Color colour;
+            if ( parseThemeColour( value, colour ) )
+                colours[key] = colour;
+        }
+
+        return colours;
+    }
+
+    SDL_Color themeColour(
+        const std::map<std::string, SDL_Color> &colours,
+        const std::string &key,
+        SDL_Color fallback )
+    {
+        std::map<std::string, SDL_Color>::const_iterator it = colours.find( key );
+        return it == colours.end( ) ? fallback : it->second;
+    }
     SDL_Color mix( SDL_Color a, SDL_Color b, int t256 )
     {
         return rgb( a.r + ( b.r - a.r ) * t256 / 256,
@@ -1353,10 +1472,10 @@ void SearchOverlay::drawStatusBox( int w, int h )
     int bx   = ( w - bw ) / 2;
     int by   = ( h - bh ) / 2;
 
-    rect( 0, 0, w, h, rgb( 0, 0, 0 ), 150 );
+    rect( 0, 0, w, h, themeColour( themeColours_, "statusBackdrop", rgb( 0, 0, 0 ) ), 150 );
     shadow( bx, by, bw, bh, u, u );
-    rrect( bx, by, bw, bh, u, rgb( 58, 66, 96 ), 255 );
-    rrect( bx + 1, by + 1, bw - 2, bh - 2, u, rgb( 24, 28, 42 ), 255 );
+    rrect( bx, by, bw, bh, u, themeColour( themeColours_, "statusBorder", rgb( 58, 66, 96 ) ), 255 );
+    rrect( bx + 1, by + 1, bw - 2, bh - 2, u, themeColour( themeColours_, "statusPanel", rgb( 24, 28, 42 ) ), 255 );
 
     // little spinner
     int   cx    = bx + pad + spin / 2;
@@ -1370,10 +1489,10 @@ void SearchOverlay::drawStatusBox( int w, int h )
         int   dx = static_cast<int>( static_cast<float>( ring ) * sinf( a ) );
         int   dy = static_cast<int>( -static_cast<float>( ring ) * cosf( a ) );
         int   age = static_cast<int>( ( tick + 8 - static_cast<Uint32>( i ) ) % 8 );
-        rrect( cx + dx - dot, cy + dy - dot, dot * 2, dot * 2, dot, rgb( 255, 191, 64 ), 255 - age * 28 );
+        rrect( cx + dx - dot, cy + dy - dot, dot * 2, dot * 2, dot, themeColour( themeColours_, "statusSpinner", rgb( 255, 191, 64 ) ), 255 - age * 28 );
     }
 
-    text( bx + pad + spin + pad / 2, cy - th / 2, px, false, msg, rgb( 236, 239, 248 ) );
+    text( bx + pad + spin + pad / 2, cy - th / 2, px, false, msg, themeColour( themeColours_, "statusText", rgb( 236, 239, 248 ) ) );
 }
 
 
@@ -1422,21 +1541,22 @@ void SearchOverlay::draw( SDL_Renderer *r )
     visibleRows_ = imax( 1, ( 8 * u ) / ( 4 * u ) );
     ensureCursorVisible( );
 
-    // palette
-    const SDL_Color accent    = rgb( 255, 191, 64 );
-    const SDL_Color accentDk  = rgb( 28, 22, 8 );
-    const SDL_Color panelCol  = rgb( 22, 26, 40 );
-    const SDL_Color border    = rgb( 58, 66, 98 );
-    const SDL_Color cardCol   = rgb( 29, 34, 52 );
-    const SDL_Color fieldCol  = rgb( 13, 16, 26 );
-    const SDL_Color textHi    = rgb( 236, 239, 248 );
-    const SDL_Color textMid   = rgb( 152, 162, 192 );
-    const SDL_Color textLow   = rgb( 100, 110, 142 );
+    // palette: missing or invalid theme entries use original colours.
+    const std::map<std::string, SDL_Color> &theme = themeColours_;
+    const SDL_Color accent   = themeColour( theme, "accent",   rgb( 255, 191, 64 ) );
+    const SDL_Color accentDk = themeColour( theme, "accentDk", rgb( 28, 22, 8 ) );
+    const SDL_Color panelCol = themeColour( theme, "panel",    rgb( 22, 26, 40 ) );
+    const SDL_Color border   = themeColour( theme, "border",   rgb( 58, 66, 98 ) );
+    const SDL_Color cardCol  = themeColour( theme, "card",     rgb( 29, 34, 52 ) );
+    const SDL_Color fieldCol = themeColour( theme, "field",    rgb( 13, 16, 26 ) );
+    const SDL_Color textHi   = themeColour( theme, "textHi",   rgb( 236, 239, 248 ) );
+    const SDL_Color textMid  = themeColour( theme, "textMid",  rgb( 152, 162, 192 ) );
+    const SDL_Color textLow  = themeColour( theme, "textLow",  rgb( 100, 110, 142 ) );
     const bool      ttf       = useTtf( );
     const std::string dot     = ttf ? "  \xC2\xB7  " : "  -  ";
 
     // ---- backdrop + panel ----
-    rect( 0, 0, w, h, rgb( 2, 3, 8 ), 185 );
+    rect( 0, 0, w, h, themeColour( theme, "backdrop", rgb( 2, 3, 8 ) ), 185 );
     shadow( l.panel.x, l.panel.y, l.panel.w, l.panel.h, u * 2, u * 3 / 2 );
     rrect( l.panel.x, l.panel.y, l.panel.w, l.panel.h, u * 2, border, 255 );
     rrect( l.panel.x + 1, l.panel.y + 1, l.panel.w - 2, l.panel.h - 2, u * 2 - 1, panelCol, 255 );
@@ -1486,7 +1606,7 @@ void SearchOverlay::draw( SDL_Renderer *r )
         std::string chip;
         SDL_Color   chipCol = accent;
         if ( query_.empty( ) )         chip = "";
-        else if ( results_.empty( ) )  { chip = "No matches"; chipCol = rgb( 255, 120, 120 ); }
+        else if ( results_.empty( ) )  { chip = "No matches"; chipCol = themeColour( theme, "noMatches", rgb( 255, 120, 120 ) ); }
         else chip = std::to_string( results_.size( ) ) + ( results_.size( ) == 1 ? " result" : " results" );
 
         int chipLeft = f.x + f.w - u;
@@ -1554,14 +1674,14 @@ void SearchOverlay::draw( SDL_Renderer *r )
                 focused = ( fb == b );
             }
 
-            SDL_Color face = rgb( 54, 62, 90 );
-            SDL_Color edge = rgb( 34, 39, 60 );
+            SDL_Color face = themeColour( theme, "keyFace", rgb( 54, 62, 90 ) );
+            SDL_Color edge = themeColour( theme, "keyEdge", rgb( 34, 39, 60 ) );
             if ( row == kSpecialRow )
             {
-                face = rgb( 66, 75, 106 );
-                edge = rgb( 40, 46, 70 );
-                if ( b == 3 ) { face = rgb( 48, 128, 98 ); edge = rgb( 30, 84, 64 ); }  // OK
-                if ( b == 4 ) { face = rgb( 132, 64, 72 ); edge = rgb( 90, 40, 47 ); }  // CANCEL
+                face = themeColour( theme, "specialFace", rgb( 66, 75, 106 ) );
+                edge = themeColour( theme, "specialEdge", rgb( 40, 46, 70 ) );
+                if ( b == 3 ) { face = themeColour( theme, "okFace", rgb( 48, 128, 98 ) ); edge = themeColour( theme, "okEdge", rgb( 30, 84, 64 ) ); }  // OK
+                if ( b == 4 ) { face = themeColour( theme, "cancelFace", rgb( 132, 64, 72 ) ); edge = themeColour( theme, "cancelEdge", rgb( 90, 40, 47 ) ); }  // CANCEL
             }
             SDL_Color label = textHi;
 
@@ -1569,7 +1689,7 @@ void SearchOverlay::draw( SDL_Renderer *r )
             {
                 glow( x, y, bw, bh, rad, accent, 70 );
                 face  = accent;
-                edge  = rgb( 190, 128, 24 );
+                edge  = themeColour( theme, "focusEdge", rgb( 190, 128, 24 ) );
                 label = accentDk;
             }
 
@@ -1649,8 +1769,8 @@ void SearchOverlay::draw( SDL_Renderer *r )
                 if ( static_cast<int>( resultPos ) == resultCursor_ )
                 {
                     const SDL_Color highlight = zone_ == ZoneResults
-                        ? rgb( 70, 64, 48 )
-                        : rgb( 43, 48, 65 );
+                        ? themeColour( theme, "resultFocused", rgb( 70, 64, 48 ) )
+                        : themeColour( theme, "resultInactive", rgb( 43, 48, 65 ) );
 
                     rrect( rc.x + inset / 2,
                            y - u / 4,
@@ -1666,7 +1786,7 @@ void SearchOverlay::draw( SDL_Renderer *r )
                               y,
                               imax( 2, u / 4 ),
                               rowH - u,
-                              rgb( 255, 191, 64 ),
+                              themeColour( theme, "resultStripe", rgb( 255, 191, 64 ) ),
                               255 );
                     }
                 }
@@ -1701,8 +1821,8 @@ void SearchOverlay::draw( SDL_Renderer *r )
         {
             int kw = textW( hints[i].key, px, true ) + u * 3 / 2;
             int kh = u * 2 + u / 4;
-            rrect( x, cy - kh / 2 + 2, kw, kh, u / 2, rgb( 34, 39, 60 ), 255 );
-            rrect( x, cy - kh / 2, kw, kh, u / 2, rgb( 60, 69, 100 ), 255 );
+            rrect( x, cy - kh / 2 + 2, kw, kh, u / 2, themeColour( theme, "footerEdge", rgb( 34, 39, 60 ) ), 255 );
+            rrect( x, cy - kh / 2, kw, kh, u / 2, themeColour( theme, "footerFace", rgb( 60, 69, 100 ) ), 255 );
             text( x + u * 3 / 4, cy - kh / 2 + ( kh - textH( px, true ) ) / 2, px, true, hints[i].key, textHi );
             x += kw + u / 2;
 

@@ -57,6 +57,7 @@ public:
     // bitmap font is used.
     void setFontPath( const std::string &path );
     void setListMode( bool enabled );
+    void setTheme( const std::string &name );
 
     bool isActive( ) const;
 
@@ -179,6 +180,8 @@ private:
     // drawing state / resources (created lazily while drawing)
     SDL_Renderer *rend_;
     int           fade_;                       // 0..255, opening animation
+    std::string   themeName_;
+    std::map<std::string, SDL_Color> themeColours_;
     std::string   userFontPath_;
     std::string   fontRegular_;
     std::string   fontBold_;

@@ -2190,6 +2190,11 @@ RetroFE::RETROFE_STATE RetroFE::runSearch( Page *page )
     config_.getProperty( "searchMode", searchMode );
     search_.setListMode( searchMode == "list" );
 
+// Search overlay colour theme (default, core, or a custom theme file).
+std::string searchTheme = "default";
+config_.getProperty( "searchTheme", searchTheme );
+search_.setTheme( searchTheme );
+
     // Optional: searchFont = <path to a .ttf> in settings.conf (absolute, or relative to the RetroFE folder)
     std::string searchFont;
     if ( config_.getProperty( "searchFont", searchFont ) && !searchFont.empty( ) )
