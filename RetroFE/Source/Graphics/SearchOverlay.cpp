@@ -746,6 +746,14 @@ void SearchOverlay::ensureCursorVisible( )
 {
     if ( visibleRows_ < 1 ) visibleRows_ = 1;
 
+    // Keep short result sets fixed at the top: no scrolling is needed when
+    // every result fits within the available rows.
+    if ( static_cast<int>( results_.size( ) ) <= visibleRows_ )
+    {
+        resultTop_ = 0;
+        return;
+    }
+
     if ( resultCursor_ < resultTop_ )
     {
         resultTop_ = resultCursor_;
@@ -1538,8 +1546,8 @@ void SearchOverlay::draw( SDL_Renderer *r )
     computeLayout( w, h, l );
     const int u = l.u;
 
-    visibleRows_ = imax( 1, ( 8 * u ) / ( 4 * u ) );
-    ensureCursorVisible( );
+    // The visible row count is calculated from the actual results card below.
+    // Do not overwrite it with an unrelated estimate on every draw.
 
     // palette: missing or invalid theme entries use original colours.
     const std::map<std::string, SDL_Color> &theme = themeColours_;
