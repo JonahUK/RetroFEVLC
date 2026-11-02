@@ -206,6 +206,31 @@ void ScrollingList::destroyItems( )
 }
 
 
+void ScrollingList::offsetVertical( float delta )
+{
+    if (delta == 0.0f)
+        return;
+
+    baseViewInfo.YOffset += delta;
+    if (railTitle_)
+        railTitle_->baseViewInfo.YOffset += delta;
+
+    if (scrollPoints_)
+    {
+        for (ViewInfo *point : *scrollPoints_)
+        {
+            if (point)
+                point->YOffset += delta;
+        }
+    }
+
+    for (Component *component : components_)
+    {
+        if (component)
+            component->baseViewInfo.YOffset += delta;
+    }
+}
+
 void ScrollingList::setPoints( std::vector<ViewInfo *> *scrollPoints, std::vector<AnimationEvents *> *tweenPoints )
 {
     scrollPoints_ = scrollPoints;

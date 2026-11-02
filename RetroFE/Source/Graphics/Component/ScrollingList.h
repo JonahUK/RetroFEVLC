@@ -27,6 +27,7 @@
 
 class Configuration;
 class Font;
+class Text;
 
 class ScrollingList : public Component
 {
@@ -64,8 +65,11 @@ public:
     bool allocateTexture( unsigned int index, Item *i );
     void deallocateTexture( unsigned int index );
     void setItems( std::vector<Item *> *items );
+    std::vector<Item *> *getItems() const { return items_; }
     void destroyItems( );
     void setPoints( std::vector<ViewInfo *> *scrollPoints, std::vector<AnimationEvents *> *tweenPoints );
+    void offsetVertical( float delta );
+    void setRailTitle( Text *title ) { railTitle_ = title; }
     unsigned int getSelectedIndex( );
     void setSelectedIndex( unsigned int index );
     unsigned int getSize( );
@@ -95,6 +99,7 @@ public:
     void setScrollAcceleration( float value );
     void setStartScrollTime( float value );
     void setMinScrollTime( float value );
+    std::string requestedCollection;
     bool horizontalScroll;
     void deallocateSpritePoints( );
     void allocateSpritePoints( );
@@ -130,5 +135,6 @@ private:
 
     std::vector<Item *>     *items_;
     std::vector<Component *> components_;
+    Text *railTitle_ = nullptr;
 
 };

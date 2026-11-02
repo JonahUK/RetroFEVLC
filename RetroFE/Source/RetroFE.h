@@ -113,7 +113,7 @@ private:
     void            render( );
     bool            back( bool &exit );
     void            quit( );
-    Page           *loadPage( );
+    Page           *loadPage( CollectionInfo *railSource = NULL );
     Page           *loadSplashPage( );
     RETROFE_STATE   processUserInput( Page *page );
     RETROFE_STATE   runSearch( Page *page );

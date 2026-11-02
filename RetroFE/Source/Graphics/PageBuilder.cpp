@@ -28,6 +28,7 @@
 #include "Animate/AnimationEvents.h"
 #include "Animate/TweenTypes.h"
 #include "../Sound/Sound.h"
+#include "../Collection/CollectionInfo.h"
 #include "../Collection/Item.h"
 #include "../SDL.h"
 #include "../Utility/Log.h"
@@ -74,7 +75,7 @@ PageBuilder::~PageBuilder()
 {
 }
 
-Page *PageBuilder::buildPage( std::string collectionName )
+Page *PageBuilder::buildPage( std::string collectionName, CollectionInfo *railSource )
 {
     Page *page = NULL;
 
@@ -205,6 +206,12 @@ Page *PageBuilder::buildPage( std::string collectionName )
                     page->setLayoutHeight( monitor, layoutHeight_ ); 
                 }
 
+                xml_attribute<> *independentRailsXml = root->first_attribute("independentRails");
+                page->setIndependentRails(
+                    independentRailsXml &&
+                    std::string(independentRailsXml->value()) == "true"
+                );
+
                 if(minShowTimeXml) 
                 {
                     page->setMinShowTime(Utils::convertFloat(minShowTimeXml->value()));
@@ -251,7 +258,7 @@ Page *PageBuilder::buildPage( std::string collectionName )
                     }
                 }
 
-                if(!buildComponents(root, page))
+                if(!buildComponents(root, page, railSource))
                 {
                     delete page;
                     page = NULL;
@@ -359,13 +366,96 @@ float PageBuilder::getVerticalAlignment(xml_attribute<> *attribute, float valueI
 
 
 
-bool PageBuilder::buildComponents(xml_node<> *layout, Page *page)
+bool PageBuilder::buildComponents(xml_node<> *layout, Page *page, CollectionInfo *railSource)
 {
     for(xml_node<> *componentXml = layout->first_node("menu"); componentXml; componentXml = componentXml->next_sibling("menu"))
     {
-        ScrollingList *scrollingList = buildMenu(componentXml,*page);
+        xml_attribute<> *repeatXml = componentXml->first_attribute("repeatFor");
+        const bool repeatCollections =
+            page->isIndependentRails() &&
+            repeatXml &&
+            std::string(repeatXml->value()) == "collections";
+
         xml_attribute<> *indexXml = componentXml->first_attribute("menuIndex");
         int index = indexXml ? Utils::convertInt(indexXml->value()) : -1;
+
+        if (repeatCollections)
+        {
+            if (!railSource)
+            {
+                Logger::write(Logger::ZONE_ERROR, "Layout",
+                              "repeatFor=collections requires a source collection");
+                continue;
+            }
+
+            xml_attribute<> *spacingXml = componentXml->first_attribute("railSpacing");
+            if (!spacingXml)
+            {
+                Logger::write(Logger::ZONE_ERROR, "Layout",
+                              "repeatFor=collections requires railSpacing in XML");
+                continue;
+            }
+
+            const float railSpacing =
+                static_cast<float>(Utils::convertInt(spacingXml->value()));
+
+            int railNumber = 0;
+            for (Item *item : railSource->items)
+            {
+                if (!item || item->leaf || item->name.empty())
+                    continue;
+
+                ScrollingList *rail = buildMenu(componentXml, *page, railNumber * railSpacing);
+                if (!rail)
+                    continue;
+
+                rail->requestedCollection = item->name;
+
+                if (xml_node<> *titleXml = componentXml->first_node("railTitle"))
+                {
+                    Font *titleFont = addFont(titleXml, NULL);
+                    Text *title = new Text(item->name, *page, titleFont, monitor_);
+                    buildViewInfo(titleXml, title->baseViewInfo);
+                    loadTweens(title, titleXml);
+                    title->baseViewInfo.YOffset += railNumber * railSpacing;
+
+                    if (page->addComponent(title))
+                        rail->setRailTitle(title);
+                    else
+                        delete title;
+                }
+                rail->baseViewInfo.YOffset += railNumber * railSpacing;
+                page->pushMenu(rail, index);
+                ++railNumber;
+            }
+
+            continue;
+        }
+
+        ScrollingList *scrollingList = buildMenu(componentXml, *page);
+        if (page->isIndependentRails() && scrollingList)
+        {
+            xml_attribute<> *collectionXml = componentXml->first_attribute("collection");
+            if (collectionXml)
+                scrollingList->requestedCollection = collectionXml->value();
+            if (collectionXml && !scrollingList->requestedCollection.empty())
+            {
+                if (xml_node<> *titleXml = componentXml->first_node("railTitle"))
+                {
+                    Font *titleFont = addFont(titleXml, NULL);
+                    Text *title = new Text(scrollingList->requestedCollection,
+                                           *page, titleFont, monitor_);
+                    buildViewInfo(titleXml, title->baseViewInfo);
+                    loadTweens(title, titleXml);
+
+                    if (page->addComponent(title))
+                        scrollingList->setRailTitle(title);
+                    else
+                        delete title;
+                }
+            }
+        }
+
         page->pushMenu(scrollingList, index);
     }
 
@@ -972,7 +1062,7 @@ void PageBuilder::buildTweenSet(AnimationEvents *tweens, xml_node<> *componentXm
 }
 
 
-ScrollingList * PageBuilder::buildMenu(xml_node<> *menuXml, Page &page)
+ScrollingList * PageBuilder::buildMenu(xml_node<> *menuXml, Page &page, float verticalOffset)
 {
     ScrollingList *menu = NULL;
     std::string menuType = "vertical";
@@ -1063,9 +1153,9 @@ ScrollingList * PageBuilder::buildMenu(xml_node<> *menuXml, Page &page)
 
     buildViewInfo(menuXml, menu->baseViewInfo);
 
-    if(menuType == "custom")
+    if(menuType == "custom" || menuType == "rail")
     {
-        buildCustomMenu(menu, menuXml, itemDefaults);
+        buildCustomMenu(menu, menuXml, itemDefaults, verticalOffset);
     }
     else
     {
@@ -1078,7 +1168,7 @@ ScrollingList * PageBuilder::buildMenu(xml_node<> *menuXml, Page &page)
 }
 
 
-void PageBuilder::buildCustomMenu(ScrollingList *menu, xml_node<> *menuXml, xml_node<> *itemDefaults)
+void PageBuilder::buildCustomMenu(ScrollingList *menu, xml_node<> *menuXml, xml_node<> *itemDefaults, float verticalOffset)
 {
     std::vector<ViewInfo *> *points = new std::vector<ViewInfo *>();
     std::vector<AnimationEvents *> *tweenPoints = new std::vector<AnimationEvents *>();
@@ -1089,6 +1179,7 @@ void PageBuilder::buildCustomMenu(ScrollingList *menu, xml_node<> *menuXml, xml_
     {
         ViewInfo *viewInfo = new ViewInfo();
         buildViewInfo(componentXml, *viewInfo, itemDefaults);
+        viewInfo->YOffset += verticalOffset;
         viewInfo->Monitor = menu->baseViewInfo.Monitor;
 
         points->push_back(viewInfo);

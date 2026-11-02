@@ -535,16 +535,16 @@ bool RetroFE::run( )
                 currentPage_->deInitialize( );
                 delete currentPage_;
 
-                currentPage_ = loadPage( );
+                std::string firstCollection = "Main";
+                config_.getProperty( "firstCollection", firstCollection );
+                config_.setProperty( "currentCollection", firstCollection );
+
+                CollectionInfo *info = getCollection(firstCollection);
+                currentPage_ = loadPage(info);
                 splashMode = false;
+
                 if ( currentPage_ )
                 {
-                    std::string firstCollection = "Main";
-
-                    config_.getProperty( "firstCollection", firstCollection );
-                    config_.setProperty( "currentCollection", firstCollection );
-                    CollectionInfo *info = getCollection(firstCollection);
-
                     currentPage_->pushCollection(info);
 
                     config_.getProperty( "firstPlaylist", firstPlaylist_ );
@@ -552,6 +552,39 @@ bool RetroFE::run( )
                     if (currentPage_->getPlaylistName() != firstPlaylist_ )
                         currentPage_->selectPlaylist( "all" );
 
+                    // STREAM: load collections requested by independent rails.
+                    if (currentPage_->isIndependentRails())
+                    {
+                        const std::vector<std::string> railNames =
+                            currentPage_->getRequestedRailCollections();
+
+                        for (const std::string &railName : railNames)
+                        {
+                            if (railName == firstCollection)
+                                continue;
+
+                            const std::string railPath = Utils::combinePath(
+                                Configuration::absolutePath, "collections", railName);
+
+                            struct stat railStat;
+                            if (stat(railPath.c_str(), &railStat) != 0 ||
+                                (railStat.st_mode & S_IFMT) != S_IFDIR)
+                            {
+                                Logger::write(Logger::ZONE_ERROR, "RetroFE",
+                                    "STREAM rail collection directory missing: " + railName);
+                                continue;
+                            }
+
+                            CollectionInfo *railCollection = getCollection(railName);
+                            if (railCollection &&
+                                !currentPage_->registerRailCollection(railCollection))
+                            {
+                                delete railCollection;
+                            }
+                        }
+
+                        currentPage_->bindRailCollections();
+                    }
                     currentPage_->onNewItemSelected( );
                     currentPage_->reallocateMenuSpritePoints( );
 
@@ -559,6 +592,7 @@ bool RetroFE::run( )
                 }
                 else
                 {
+                    delete info;
                     state = RETROFE_QUIT_REQUEST;
                 }
             }
@@ -1557,6 +1591,29 @@ RetroFE::RETROFE_STATE RetroFE::processUserInput( Page *page )
         }
     }
 
+    // STREAM: switch between independent horizontal rails.
+    // Existing layouts retain their original input handling.
+    if (page->isIndependentRails() &&
+        page->isHorizontalScroll() &&
+        page->isIdle() &&
+        currentTime_ - keyLastTime_ > keyDelayTime_)
+    {
+        if (input_.keystate(UserInput::KeyCodeDown))
+        {
+            attract_.reset();
+            page->moveRailFocus(true);
+            keyLastTime_ = currentTime_;
+            return state;
+        }
+        else if (input_.keystate(UserInput::KeyCodeUp))
+        {
+            attract_.reset();
+            page->moveRailFocus(false);
+            keyLastTime_ = currentTime_;
+            return state;
+        }
+    }
+
     // Handle next/previous game inputs
     if ( page->isHorizontalScroll( ) )
     {
@@ -2365,14 +2422,14 @@ search_.setTheme( searchTheme );
 }
 
 
-Page *RetroFE::loadPage( )
+Page *RetroFE::loadPage( CollectionInfo *railSource )
 {
     std::string layoutName;
 
     config_.getProperty( "layout", layoutName );
 
     PageBuilder pb( layoutName, "layout", config_, &fontcache_ );
-    Page *page = pb.buildPage( );
+    Page *page = pb.buildPage( "", railSource );
 
     if ( !page )
     {

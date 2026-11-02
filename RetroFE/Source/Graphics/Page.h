@@ -47,6 +47,9 @@ public:
     virtual void onNewScrollItemSelected();
     void highlightLoadArt();
     bool pushCollection(CollectionInfo *collection);
+    bool registerRailCollection(CollectionInfo *collection);
+    void bindRailCollections();
+    std::vector<std::string> getRequestedRailCollections() const;
     bool popCollection();
     void enterMenu();
     void exitMenu();
@@ -76,6 +79,9 @@ public:
     void start();
     void stop();
     void setScrolling(ScrollDirection direction);
+    void setIndependentRails(bool enabled);
+    bool isIndependentRails() const;
+    bool moveRailFocus(bool forward);
     bool isHorizontalScroll();
     unsigned int getMenuDepth();
     Item *getSelectedItem();
@@ -143,6 +149,7 @@ public:
     bool  isPaused( );
 
 private:
+    ScrollingList *getFocusedMenu();
     void playlistChange();
     std::string collectionName_;
     Configuration &config_;
@@ -162,12 +169,15 @@ private:
     MenuVector_T menus_;
     CollectionVector_T collections_;
     CollectionVector_T deleteCollections_;
+    std::map<std::string, CollectionInfo *> railCollections_;
 
     static const unsigned int NUM_LAYERS = 20;
     std::vector<Component *> LayerComponents;
     std::list<ScrollingList *> deleteMenuList_;
     std::list<CollectionInfo *> deleteCollectionList_;
 
+    bool independentRails_;
+    unsigned int focusedRailIndex_;
     bool scrollActive_;
 
     Item *selectedItem_;

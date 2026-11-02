@@ -1,0 +1,14 @@
+<layout width="1920" height="1080" font="fonts/OpenSans.ttf" loadFontSize="36" fontColor="ffffff" independentRails="true">
+  <!-- STREAM: automatically create one horizontal rail per Main collection -->
+  <menu menuIndex="0" repeatFor="collections" type="rail" imageType="fanart" orientation="horizontal" textFallback="true" scrollTime=".2" scrollAcceleration=".02" minScrollTime=".1" x="0" y="410" width="center" railSpacing="390">
+    <railTitle x="100" y="235" fontSize="36" fontColor="ffffff" layer="14" />
+    <itemDefaults alpha="1" x="center" y="410" width="230" maxHeight="280" xOrigin="center" yOrigin="center" layer="12" />
+    <item xOffset="-760" />
+    <item xOffset="-500" />
+    <item xOffset="-250" />
+    <item xOffset="0" selected="true" width="270" maxHeight="310" layer="13" />
+    <item xOffset="250" />
+    <item xOffset="500" />
+    <item xOffset="760" />
+  </menu>
+</layout>

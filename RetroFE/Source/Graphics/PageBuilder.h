@@ -24,6 +24,7 @@
 
 static const int MENU_INDEX_HIGH = 16;
 
+class CollectionInfo;
 class ScrollingList;
 class Page;
 class ViewInfo;
@@ -35,7 +36,7 @@ class PageBuilder
 public:
     PageBuilder(std::string layoutKey, std::string layoutPage, Configuration &c, FontCache *fc, bool isMenu = false);
     virtual ~PageBuilder();
-    Page *buildPage( std::string collectionName = "" );
+    Page *buildPage( std::string collectionName = "", CollectionInfo *railSource = NULL );
 
 private:
     std::string layoutKey;
@@ -58,12 +59,12 @@ private:
     float getVerticalAlignment(rapidxml::xml_attribute<> *attribute, float valueIfNull);
     float getHorizontalAlignment(rapidxml::xml_attribute<> *attribute, float valueIfNull);
     void buildViewInfo(rapidxml::xml_node<> *componentXml, ViewInfo &info, rapidxml::xml_node<> *defaultXml = NULL);
-    bool buildComponents(rapidxml::xml_node<> *layout, Page *page);
+    bool buildComponents(rapidxml::xml_node<> *layout, Page *page, CollectionInfo *railSource = NULL);
     void loadTweens(Component *c, rapidxml::xml_node<> *componentXml);
     AnimationEvents *createTweenInstance(rapidxml::xml_node<> *componentXml);
     void buildTweenSet(AnimationEvents *tweens, rapidxml::xml_node<> *componentXml, std::string tagName, std::string tweenName);
-    ScrollingList * buildMenu(rapidxml::xml_node<> *menuXml, Page &p);
-    void buildCustomMenu(ScrollingList *menu, rapidxml::xml_node<> *menuXml, rapidxml::xml_node<> *itemDefaults);
+    ScrollingList * buildMenu(rapidxml::xml_node<> *menuXml, Page &p, float verticalOffset = 0.0f);
+    void buildCustomMenu(ScrollingList *menu, rapidxml::xml_node<> *menuXml, rapidxml::xml_node<> *itemDefaults, float verticalOffset = 0.0f);
     void buildVerticalMenu(ScrollingList *menu, rapidxml::xml_node<> *menuXml, rapidxml::xml_node<> *itemDefaults);
     int parseMenuPosition(std::string strIndex);
     rapidxml::xml_attribute<> *findAttribute(rapidxml::xml_node<> *componentXml, std::string attribute, rapidxml::xml_node<> *defaultXml);

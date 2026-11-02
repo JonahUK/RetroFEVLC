@@ -31,6 +31,8 @@
 Page::Page(Configuration &config, int layoutWidth, int layoutHeight)
     : config_(config)
     , menuDepth_(0)
+    , independentRails_(false)
+    , focusedRailIndex_(0)
     , scrollActive_(false)
     , selectedItem_(NULL)
     , textStatusComponent_(NULL)
@@ -46,6 +48,80 @@ Page::Page(Configuration &config, int layoutWidth, int layoutHeight)
         layoutWidth_.push_back(layoutWidth);
         layoutHeight_.push_back(layoutHeight);
     }
+}
+
+
+ScrollingList *Page::getFocusedMenu()
+{
+    if(activeMenu_.empty())
+        return NULL;
+
+    if(independentRails_ && focusedRailIndex_ < activeMenu_.size())
+        return activeMenu_[focusedRailIndex_];
+
+    return activeMenu_[0];
+}
+
+
+bool Page::isIndependentRails() const
+{
+    return independentRails_;
+}
+
+
+bool Page::moveRailFocus(bool forward)
+{
+    if(!independentRails_ || activeMenu_.empty())
+        return false;
+
+    unsigned int next = focusedRailIndex_;
+
+    if(forward)
+    {
+        if(next + 1 >= activeMenu_.size())
+            return false;
+        ++next;
+    }
+    else
+    {
+        if(next == 0)
+            return false;
+        --next;
+    }
+
+    if(!activeMenu_[next])
+        return false;
+
+    ScrollingList *previousRail = activeMenu_[focusedRailIndex_];
+    ScrollingList *nextRail = activeMenu_[next];
+
+    if (previousRail && nextRail)
+    {
+        const float previousY =
+            previousRail->baseViewInfo.Y + previousRail->baseViewInfo.YOffset;
+
+        const float nextY =
+            nextRail->baseViewInfo.Y + nextRail->baseViewInfo.YOffset;
+
+        const float delta = previousY - nextY;
+
+        for (ScrollingList *rail : activeMenu_)
+        {
+            if (rail)
+                rail->offsetVertical(delta);
+        }
+    }
+
+    focusedRailIndex_ = next;
+    highlightLoadArt();
+    return true;
+}
+
+
+void Page::setIndependentRails(bool enabled)
+{
+    independentRails_ = enabled;
+    focusedRailIndex_ = 0;
 }
 
 
@@ -118,6 +194,17 @@ void Page::deInitialize()
         collections_.erase(itc);
         itc = collections_.begin();
     }
+
+    // STREAM: release collections owned by independent rails.
+    for (auto &entry : railCollections_)
+    {
+        if (entry.second)
+        {
+            entry.second->Save();
+            delete entry.second;
+        }
+    }
+    railCollections_.clear();
 }
 
 
@@ -153,8 +240,9 @@ void Page::setSelectSound(Sound *chunk)
 
 void Page::onNewItemSelected()
 {
-    if(!(activeMenu_.size() > 0 && activeMenu_[0])) return;
-    selectedItem_ = activeMenu_[0]->getSelectedItem();
+    ScrollingList *menu = getFocusedMenu();
+    if(!menu) return;
+    selectedItem_ = menu->getSelectedItem();
 
     for(MenuVector_T::iterator it = menus_.begin(); it != menus_.end(); it++)
     {
@@ -175,8 +263,9 @@ void Page::onNewItemSelected()
 
 void Page::onNewScrollItemSelected()
 {
-    if(!(activeMenu_.size() > 0 && activeMenu_[0])) return;
-    selectedItem_ = activeMenu_[0]->getSelectedItem();
+    ScrollingList *menu = getFocusedMenu();
+    if(!menu) return;
+    selectedItem_ = menu->getSelectedItem();
 
     for(std::vector<Component *>::iterator it = LayerComponents.begin(); it != LayerComponents.end(); ++it)
     {
@@ -188,8 +277,9 @@ void Page::onNewScrollItemSelected()
 
 void Page::highlightLoadArt()
 {
-    if(!(activeMenu_.size() > 0 && activeMenu_[0])) return;
-    selectedItem_ = activeMenu_[0]->getSelectedItem();
+    ScrollingList *menu = getFocusedMenu();
+    if(!menu) return;
+    selectedItem_ = menu->getSelectedItem();
 
     for(std::vector<Component *>::iterator it = LayerComponents.begin(); it != LayerComponents.end(); ++it)
     {
@@ -380,8 +470,9 @@ Item *Page::getSelectedItem()
 
 Item *Page::getSelectedItem(int offset)
 {
-    if(!(activeMenu_.size() > 0 && activeMenu_[0])) return NULL;
-    return activeMenu_[0]->getItemByOffset(offset);
+    ScrollingList *menu = getFocusedMenu();
+    if(!menu) return NULL;
+    return menu->getItemByOffset(offset);
 }
 
 
@@ -932,6 +1023,96 @@ unsigned int Page::getSelectedIndex()
 }
 
 
+bool Page::registerRailCollection(CollectionInfo *collection)
+{
+    if (!independentRails_ || !collection)
+        return false;
+
+    if (railCollections_.find(collection->name) != railCollections_.end())
+        return false;
+
+    for (const auto &info : collections_)
+    {
+        if (info.collection == collection)
+            return false;
+    }
+
+    for (const auto &info : deleteCollections_)
+    {
+        if (info.collection == collection)
+            return false;
+    }
+
+    for (const auto &entry : railCollections_)
+    {
+        if (entry.second == collection)
+            return false;
+    }
+
+    railCollections_[collection->name] = collection;
+    return true;
+}
+
+std::vector<std::string> Page::getRequestedRailCollections() const
+{
+    std::vector<std::string> names;
+
+    if (!independentRails_)
+        return names;
+
+    for (const auto &menuLevel : menus_)
+    {
+        for (const ScrollingList *menu : menuLevel)
+        {
+            if (!menu || menu->requestedCollection.empty())
+                continue;
+
+            if (std::find(names.begin(), names.end(),
+                          menu->requestedCollection) == names.end())
+            {
+                names.push_back(menu->requestedCollection);
+            }
+        }
+    }
+
+    return names;
+}
+
+void Page::bindRailCollections()
+{
+    if (!independentRails_ || collections_.empty())
+        return;
+
+    CollectionInfo *currentCollection = collections_.back().collection;
+    if (!currentCollection)
+        return;
+
+    for (ScrollingList *menu : activeMenu_)
+    {
+        if (!menu)
+            continue;
+
+        CollectionInfo *target = currentCollection;
+
+        if (!menu->requestedCollection.empty() &&
+            menu->requestedCollection != currentCollection->name)
+        {
+            auto found = railCollections_.find(menu->requestedCollection);
+            if (found == railCollections_.end() || !found->second)
+                continue;
+
+            target = found->second;
+        }
+
+        if (menu->getItems() != &target->items)
+        {
+            menu->setItems(&target->items);
+        }
+
+        menu->collectionName = target->name;
+    }
+}
+
 bool Page::pushCollection(CollectionInfo *collection)
 {
 
@@ -950,8 +1131,21 @@ bool Page::pushCollection(CollectionInfo *collection)
     for(std::vector<ScrollingList *>::iterator it = activeMenu_.begin(); it != activeMenu_.end(); it++)
     {
         ScrollingList *menu = *it;
-        menu->collectionName = collection->name;
-        menu->setItems(&collection->items);
+        CollectionInfo *target = collection;
+
+        if (independentRails_ && !menu->requestedCollection.empty() &&
+            menu->requestedCollection != collection->name)
+        {
+            auto found = railCollections_.find(menu->requestedCollection);
+            if (found != railCollections_.end() && found->second)
+                target = found->second;
+        }
+
+        if (menu->getItems() != &target->items)
+        {
+            menu->setItems(&target->items);
+        }
+        menu->collectionName = target->name;
     }
 
     // build the collection info instance
@@ -963,6 +1157,7 @@ bool Page::pushCollection(CollectionInfo *collection)
 
     playlist_ = info.playlist;
     playlistChange();
+    bindRailCollections();
 
     if(menuDepth_ < menus_.size())
     {
@@ -998,6 +1193,7 @@ bool Page::popCollection()
 
     menuDepth_--;
     activeMenu_ = menus_[menuDepth_ - 1];
+    bindRailCollections();
 
     for(std::vector<Component *>::iterator it = LayerComponents.begin(); it != LayerComponents.end(); ++it)
     {
@@ -1598,10 +1794,20 @@ bool Page::isPlaying()
 
 void Page::resetScrollPeriod()
 {
-    for(std::vector<ScrollingList *>::iterator it = activeMenu_.begin(); it != activeMenu_.end(); it++)
+    if(independentRails_)
     {
-        ScrollingList *menu = *it;
-        if(menu) menu->resetScrollPeriod();
+        ScrollingList *menu = getFocusedMenu();
+        if(menu)
+            menu->resetScrollPeriod();
+    }
+    else
+    {
+        for(std::vector<ScrollingList *>::iterator it = activeMenu_.begin(); it != activeMenu_.end(); it++)
+        {
+            ScrollingList *menu = *it;
+            if(menu)
+                menu->resetScrollPeriod();
+        }
     }
     return;
 }
@@ -1609,10 +1815,20 @@ void Page::resetScrollPeriod()
 
 void Page::updateScrollPeriod()
 {
-    for(std::vector<ScrollingList *>::iterator it = activeMenu_.begin(); it != activeMenu_.end(); it++)
+    if(independentRails_)
     {
-        ScrollingList *menu = *it;
-        if(menu) menu->updateScrollPeriod();
+        ScrollingList *menu = getFocusedMenu();
+        if(menu)
+            menu->updateScrollPeriod();
+    }
+    else
+    {
+        for(std::vector<ScrollingList *>::iterator it = activeMenu_.begin(); it != activeMenu_.end(); it++)
+        {
+            ScrollingList *menu = *it;
+            if(menu)
+                menu->updateScrollPeriod();
+        }
     }
     return;
 }
@@ -1620,19 +1836,33 @@ void Page::updateScrollPeriod()
 
 void Page::scroll(bool forward)
 {
-    for(std::vector<ScrollingList *>::iterator it = activeMenu_.begin(); it != activeMenu_.end(); it++)
+    if(independentRails_)
     {
-        ScrollingList *menu = *it;
+        ScrollingList *menu = getFocusedMenu();
         if(menu)
         {
             menu->scroll(forward);
         }
     }
+    else
+    {
+        for(std::vector<ScrollingList *>::iterator it = activeMenu_.begin(); it != activeMenu_.end(); it++)
+        {
+            ScrollingList *menu = *it;
+            if(menu)
+            {
+                menu->scroll(forward);
+            }
+        }
+    }
+
     onNewScrollItemSelected();
+
     if(highlightSoundChunk_)
     {
         highlightSoundChunk_->play();
     }
+
     return;
 }
 
