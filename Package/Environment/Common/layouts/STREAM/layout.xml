@@ -14,7 +14,7 @@
       </set>
     </onRailExit>
     <itemDefaults alpha="1" x="center" y="650" width="230" maxHeight="190" xOrigin="center" yOrigin="center" layer="12" />
-    <item xOffset="-760" alpha="0" />
+    <item xOffset="-1020" alpha="0" />
     <item xOffset="-760" selected="true" width="270" maxHeight="215" layer="13" />
     <item xOffset="-500" />
     <item xOffset="-240" />
@@ -22,6 +22,6 @@
     <item xOffset="280" />
     <item xOffset="540" />
     <item xOffset="800" />
-    <item xOffset="800" alpha="0" />
+    <item xOffset="1060" alpha="0" />
   </menu>
 </layout>
