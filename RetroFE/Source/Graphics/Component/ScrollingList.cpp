@@ -567,6 +567,19 @@ void ScrollingList::triggerGameExitEvent( int menuIndex )
     }
 }
 
+void ScrollingList::triggerRailEvent(const std::string &event, int menuIndex)
+{
+    triggerEvent(event, menuIndex);
+
+    if(railTitle_)
+        railTitle_->triggerEvent(event, menuIndex);
+
+    for(Component *component : components_)
+    {
+        if(component)
+            component->triggerEvent(event, menuIndex);
+    }
+}
 void ScrollingList::triggerHighlightEnterEvent( int menuIndex )
 {
     for ( unsigned int i = 0; i < components_.size( ); ++i )
@@ -1023,7 +1036,13 @@ void ScrollingList::draw( unsigned int layer )
     for ( unsigned int i = 0; i < components_.size(  ); ++i )
     {
         Component *c = components_.at( i );
-        if ( c && c->baseViewInfo.Layer == layer ) c->draw(  );
+        if ( c && c->baseViewInfo.Layer == layer )
+        {
+            const float originalAlpha = c->baseViewInfo.Alpha;
+            c->baseViewInfo.Alpha *= baseViewInfo.Alpha;
+            c->draw(  );
+            c->baseViewInfo.Alpha = originalAlpha;
+        }
     }
 }
 

@@ -1,8 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layout width="1920" height="1080" font="fonts/OpenSans.ttf" loadFontSize="36" fontColor="ffffff" independentRails="true" visibleRails="2" loopRails="true">
   <!-- STREAM: automatically create one horizontal rail per Main collection -->
-  <menu menuIndex="0" repeatFor="collections" type="rail" imageType="fanart" orientation="horizontal" textFallback="true" scrollTime=".2" scrollAcceleration=".02" minScrollTime=".1" x="0" y="650" width="center" railSpacing="230">
+  <menu menuIndex="0" repeatFor="collections" type="rail" imageType="fanart" orientation="horizontal" textFallback="true" scrollTime=".2" scrollAcceleration=".02" minScrollTime=".1" x="0" y="650" width="center" railSpacing="230" inactiveAlpha=".45">
     <railTitle x="100" y="530" fontSize="36" fontColor="ffffff" layer="14" />
+    <onRailEnter>
+      <set duration=".2">
+        <animate type="alpha" to="1" />
+      </set>
+    </onRailEnter>
+    <onRailExit>
+      <set duration=".2">
+        <animate type="alpha" to=".45" />
+      </set>
+    </onRailExit>
     <itemDefaults alpha="1" x="center" y="650" width="230" maxHeight="190" xOrigin="center" yOrigin="center" layer="12" />
     <item xOffset="-760" alpha="0" />
     <item xOffset="-760" selected="true" width="270" maxHeight="215" layer="13" />

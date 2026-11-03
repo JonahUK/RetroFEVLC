@@ -413,6 +413,9 @@ bool PageBuilder::buildComponents(xml_node<> *layout, Page *page, CollectionInfo
                 static_cast<float>(Utils::convertInt(spacingXml->value()));
             page->setRailSpacing(railSpacing);
 
+            xml_attribute<> *inactiveAlphaXml =
+                componentXml->first_attribute("inactiveAlpha");
+
             int railNumber = 0;
             for (Item *item : railSource->items)
             {
@@ -424,6 +427,12 @@ bool PageBuilder::buildComponents(xml_node<> *layout, Page *page, CollectionInfo
                     continue;
 
                 rail->requestedCollection = item->name;
+
+                if (railNumber > 0 && inactiveAlphaXml)
+                {
+                    rail->baseViewInfo.Alpha =
+                        Utils::convertFloat(inactiveAlphaXml->value());
+                }
 
                 if (xml_node<> *titleXml = componentXml->first_node("railTitle"))
                 {
@@ -985,6 +994,8 @@ AnimationEvents *PageBuilder::createTweenInstance(xml_node<> *componentXml)
     buildTweenSet(tweens, componentXml, "onExit",           "exit");
     buildTweenSet(tweens, componentXml, "onIdle",           "idle");
     buildTweenSet(tweens, componentXml, "onMenuIdle",       "menuIdle");
+    buildTweenSet(tweens, componentXml, "onRailEnter",      "railEnter");
+    buildTweenSet(tweens, componentXml, "onRailExit",       "railExit");
     buildTweenSet(tweens, componentXml, "onMenuScroll",     "menuScroll");
     buildTweenSet(tweens, componentXml, "onHighlightEnter", "highlightEnter");
     buildTweenSet(tweens, componentXml, "onHighlightExit",  "highlightExit");

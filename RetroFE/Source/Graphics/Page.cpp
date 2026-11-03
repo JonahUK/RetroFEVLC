@@ -169,6 +169,11 @@ bool Page::moveRailFocus(bool forward)
         }
     }
 
+    // Notify the rails of their focus change.
+    // Visual effects are defined by the layout XML.
+    previousRail->triggerRailEvent("railExit", 0);
+    nextRail->triggerRailEvent("railEnter", 0);
+
     focusedRailIndex_ = next;
     highlightLoadArt();
     return true;
@@ -1660,7 +1665,25 @@ else
                 }
 
                 if(show)
-                    (*it)->draw();
+                {
+                    Component *component = *it;
+                    const float originalAlpha = component->baseViewInfo.Alpha;
+
+                    if(independentRails_)
+                    {
+                        for(ScrollingList *rail : activeMenu_)
+                        {
+                            if(rail && rail->getRailTitle() == component)
+                            {
+                                component->baseViewInfo.Alpha *= rail->baseViewInfo.Alpha;
+                                break;
+                            }
+                        }
+                    }
+
+                    component->draw();
+                    component->baseViewInfo.Alpha = originalAlpha;
+                }
             }
         }
 

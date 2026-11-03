@@ -51,6 +51,7 @@ public:
     void triggerMenuExitEvent( int menuIndex = -1 );
     void triggerGameEnterEvent( int menuIndex = -1 );
     void triggerGameExitEvent( int menuIndex = -1 );
+    void triggerRailEvent(const std::string &event, int menuIndex);
     void triggerHighlightEnterEvent( int menuIndex = -1 );
     void triggerHighlightExitEvent( int menuIndex = -1 );
     void triggerPlaylistEnterEvent( int menuIndex = -1 );
