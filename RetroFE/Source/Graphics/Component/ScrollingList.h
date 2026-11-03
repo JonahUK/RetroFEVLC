@@ -70,6 +70,7 @@ public:
     void setPoints( std::vector<ViewInfo *> *scrollPoints, std::vector<AnimationEvents *> *tweenPoints );
     void offsetVertical( float delta );
     void setRailTitle( Text *title ) { railTitle_ = title; }
+    Text *getRailTitle() const { return railTitle_; }
     unsigned int getSelectedIndex( );
     void setSelectedIndex( unsigned int index );
     unsigned int getSize( );
