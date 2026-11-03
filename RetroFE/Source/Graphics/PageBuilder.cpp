@@ -211,6 +211,19 @@ Page *PageBuilder::buildPage( std::string collectionName, CollectionInfo *railSo
                     independentRailsXml &&
                     std::string(independentRailsXml->value()) == "true"
                 );
+                xml_attribute<> *loopRailsXml = root->first_attribute("loopRails");
+                page->setLoopRails(
+                    page->isIndependentRails() && loopRailsXml &&
+                    std::string(loopRailsXml->value()) == "true"
+                );
+
+                xml_attribute<> *visibleRailsXml = root->first_attribute("visibleRails");
+                page->setVisibleRails(
+                    page->isIndependentRails() && visibleRailsXml
+                        ? static_cast<unsigned int>(
+                            std::max(0, Utils::convertInt(visibleRailsXml->value())))
+                        : 0
+                );
 
                 if(minShowTimeXml) 
                 {
@@ -398,6 +411,7 @@ bool PageBuilder::buildComponents(xml_node<> *layout, Page *page, CollectionInfo
 
             const float railSpacing =
                 static_cast<float>(Utils::convertInt(spacingXml->value()));
+            page->setRailSpacing(railSpacing);
 
             int railNumber = 0;
             for (Item *item : railSource->items)
@@ -425,6 +439,14 @@ bool PageBuilder::buildComponents(xml_node<> *layout, Page *page, CollectionInfo
                         delete title;
                 }
                 rail->baseViewInfo.YOffset += railNumber * railSpacing;
+
+                if (railNumber == 0)
+                {
+                    page->setRailAnchorY(
+                        rail->baseViewInfo.Y +
+                        rail->baseViewInfo.YOffset
+                    );
+                }
                 page->pushMenu(rail, index);
                 ++railNumber;
             }

@@ -80,6 +80,10 @@ public:
     void stop();
     void setScrolling(ScrollDirection direction);
     void setIndependentRails(bool enabled);
+    void setVisibleRails(unsigned int count);
+    void setLoopRails(bool enabled) { loopRails_ = enabled; }
+    void setRailSpacing(float spacing) { railSpacing_ = spacing; }
+    void setRailAnchorY(float y) { railAnchorY_ = y; }
     bool isIndependentRails() const;
     bool moveRailFocus(bool forward);
     bool isHorizontalScroll();
@@ -177,6 +181,10 @@ private:
     std::list<CollectionInfo *> deleteCollectionList_;
 
     bool independentRails_;
+    unsigned int visibleRails_;
+    bool loopRails_;
+    float railSpacing_;
+    float railAnchorY_;
     unsigned int focusedRailIndex_;
     bool scrollActive_;
 

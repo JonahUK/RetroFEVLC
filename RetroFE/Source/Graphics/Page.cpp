@@ -32,6 +32,10 @@ Page::Page(Configuration &config, int layoutWidth, int layoutHeight)
     : config_(config)
     , menuDepth_(0)
     , independentRails_(false)
+    , visibleRails_(0)
+    , loopRails_(false)
+    , railSpacing_(0.0f)
+    , railAnchorY_(0.0f)
     , focusedRailIndex_(0)
     , scrollActive_(false)
     , selectedItem_(NULL)
@@ -74,40 +78,93 @@ bool Page::moveRailFocus(bool forward)
     if(!independentRails_ || activeMenu_.empty())
         return false;
 
+    const unsigned int count =
+        static_cast<unsigned int>(activeMenu_.size());
+
+    if(focusedRailIndex_ >= count)
+        return false;
+
+    if(loopRails_ && (count < 2 || railSpacing_ == 0.0f))
+        return false;
+
     unsigned int next = focusedRailIndex_;
 
     if(forward)
     {
-        if(next + 1 >= activeMenu_.size())
-            return false;
-        ++next;
+        if(next + 1 >= count)
+        {
+            if(!loopRails_)
+                return false;
+            next = 0;
+        }
+        else
+            ++next;
     }
     else
     {
         if(next == 0)
-            return false;
-        --next;
+        {
+            if(!loopRails_)
+                return false;
+            next = count - 1;
+        }
+        else
+            --next;
     }
-
-    if(!activeMenu_[next])
-        return false;
 
     ScrollingList *previousRail = activeMenu_[focusedRailIndex_];
     ScrollingList *nextRail = activeMenu_[next];
 
-    if (previousRail && nextRail)
-    {
-        const float previousY =
-            previousRail->baseViewInfo.Y + previousRail->baseViewInfo.YOffset;
+    if(!previousRail || !nextRail)
+        return false;
 
+    const float previousY =
+        previousRail->baseViewInfo.Y +
+        previousRail->baseViewInfo.YOffset;
+
+    if(loopRails_)
+    {
+        // Keep the focused rail anchored in the upper visible row.
+        // Reposition only the rail components and their titles.
+        // Other page components, including the top half, are untouched.
+        for(unsigned int r = 0; r < count; ++r)
+        {
+            ScrollingList *rail = activeMenu_[r];
+
+            if(!rail)
+                continue;
+
+            const unsigned int forwardDistance =
+                (r + count - next) % count;
+
+            // The rail immediately preceding focus sits one row above.
+            // All following rails retain their circular order below.
+            const int relative =
+                forwardDistance == count - 1
+                    ? -1
+                    : static_cast<int>(forwardDistance);
+
+            const float targetY =
+                railAnchorY_ + relative * railSpacing_;
+
+            const float currentY =
+                rail->baseViewInfo.Y +
+                rail->baseViewInfo.YOffset;
+
+            rail->offsetVertical(targetY - currentY);
+        }
+    }
+    else
+    {
         const float nextY =
-            nextRail->baseViewInfo.Y + nextRail->baseViewInfo.YOffset;
+            nextRail->baseViewInfo.Y +
+            nextRail->baseViewInfo.YOffset;
 
         const float delta = previousY - nextY;
 
-        for (ScrollingList *rail : activeMenu_)
+        for(ScrollingList *rail : activeMenu_)
         {
-            if (rail)
+            if(rail)
                 rail->offsetVertical(delta);
         }
     }
@@ -117,6 +174,10 @@ bool Page::moveRailFocus(bool forward)
     return true;
 }
 
+void Page::setVisibleRails(unsigned int count)
+{
+    visibleRails_ = count;
+}
 
 void Page::setIndependentRails(bool enabled)
 {
@@ -1567,7 +1628,40 @@ void Page::draw()
     {
         for(std::vector<Component *>::iterator it = LayerComponents.begin(); it != LayerComponents.end(); ++it)
         {
-            if(*it && (*it)->baseViewInfo.Layer == i) (*it)->draw();
+            if(*it && (*it)->baseViewInfo.Layer == i)
+            {
+                bool show = true;
+
+                if(independentRails_ && visibleRails_ > 0)
+                {
+                    for(unsigned int r = 0; r < activeMenu_.size(); ++r)
+                    {
+                        ScrollingList *rail = activeMenu_[r];
+                        if(rail && rail->getRailTitle() == *it)
+                        {
+                            if(loopRails_ && !activeMenu_.empty())
+{
+    const unsigned int count =
+        static_cast<unsigned int>(activeMenu_.size());
+
+    const unsigned int distance =
+        (r + count - focusedRailIndex_) % count;
+
+    show = distance < visibleRails_;
+}
+else
+{
+    show = r >= focusedRailIndex_ &&
+           r - focusedRailIndex_ < visibleRails_;
+}
+                            break;
+                        }
+                    }
+                }
+
+                if(show)
+                    (*it)->draw();
+            }
         }
 
         for(MenuVector_T::iterator it = menus_.begin(); it != menus_.end(); it++)
@@ -1575,6 +1669,37 @@ void Page::draw()
             for(std::vector<ScrollingList *>::iterator it2 = menus_[std::distance(menus_.begin(), it)].begin(); it2 != menus_[std::distance(menus_.begin(), it)].end(); it2++)
             {
                 ScrollingList *menu = *it2;
+
+                if(independentRails_ && visibleRails_ > 0)
+                {
+                    std::vector<ScrollingList *>::iterator found =
+                        std::find(activeMenu_.begin(), activeMenu_.end(), menu);
+
+                    if(found != activeMenu_.end())
+                    {
+                        unsigned int r =
+                            static_cast<unsigned int>(found - activeMenu_.begin());
+
+                        if(loopRails_ && !activeMenu_.empty())
+{
+    const unsigned int count =
+        static_cast<unsigned int>(activeMenu_.size());
+
+    const unsigned int distance =
+        (r + count - focusedRailIndex_) % count;
+
+    if(distance >= visibleRails_)
+        continue;
+}
+else
+{
+    if(r < focusedRailIndex_ ||
+       r - focusedRailIndex_ >= visibleRails_)
+        continue;
+}
+                    }
+                }
+
                 menu->draw(i);
             }
         }
