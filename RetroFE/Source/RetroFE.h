@@ -105,6 +105,9 @@ private:
         RETROFE_MENUMODE_START_REQUEST,
         RETROFE_MENUMODE_START_LOAD_ART,
         RETROFE_MENUMODE_START_ENTER,
+        RETROFE_CATEGORY_SWITCH_REQUEST,
+        RETROFE_CATEGORY_SWITCH_EXIT,
+        RETROFE_CATEGORY_SWITCH_LOAD_ART,
         RETROFE_NEW,
         RETROFE_QUIT_REQUEST,
         RETROFE_QUIT,
@@ -131,6 +134,10 @@ private:
     UserInput          input_;
     Page              *currentPage_;
     std::stack<Page *> pages_;
+    std::vector<std::string> categoryNames_;
+    unsigned int categoryIndex_;
+    bool categoryNavigationEnabled_;
+    int categorySwitchDirection_;
     float              keyInputDisable_;
     float              currentTime_;
     float              lastLaunchReturnTime_;

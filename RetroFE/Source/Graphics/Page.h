@@ -26,6 +26,8 @@ class Component;
 class Configuration;
 class ScrollingList;
 class Text;
+class Container;
+class Font;
 class Item;
 class Sound;
 
@@ -82,6 +84,53 @@ public:
     void setIndependentRails(bool enabled);
     void setVisibleRails(unsigned int count);
     void setLoopRails(bool enabled) { loopRails_ = enabled; }
+    void setCategoryNavigation(bool enabled) { categoryNavigation_ = enabled; }
+    bool isCategoryNavigation() const { return categoryNavigation_; }
+    void setCategoryBarData(const std::vector<std::string> &names,
+                            unsigned int selectedIndex)
+    {
+        categoryBarNames_ = names;
+        categoryBarSelectedIndex_ = selectedIndex;
+        buildCategoryBarLabels();
+    }
+    void configureCategoryBar(float x, float y, float spacing,
+                              float underlineOffset, float underlineHeight,
+                              unsigned int labelLayer, unsigned int underlineLayer)
+    {
+        categoryBarStyle_.x = x;
+        categoryBarStyle_.y = y;
+        categoryBarStyle_.spacing = spacing;
+        categoryBarStyle_.underlineOffset = underlineOffset;
+        categoryBarStyle_.underlineHeight = underlineHeight;
+        categoryBarStyle_.labelLayer = labelLayer;
+        categoryBarStyle_.underlineLayer = underlineLayer;
+    }
+    // STREAM: XML-defined template for dynamic category labels.
+    void setCategoryBarTemplate(Text *label)
+    {
+        categoryBarTemplate_ = label;
+    }
+    void setCategoryBarFonts(Font *selectedFont, Font *inactiveFont)
+    {
+        categoryBarSelectedFont_ = selectedFont;
+        categoryBarInactiveFont_ = inactiveFont;
+    }
+    void setCategoryBarUnderlineTemplate(Container *underline);
+    void setCategoryBarBackgroundTemplate(Container *background);
+    void buildCategoryBarLabels();
+    void registerCategoryBarLabel(Text *label)
+    {
+        if (label)
+            categoryBarLabels_.push_back(label);
+    }
+    const std::vector<std::string> &getCategoryBarNames() const
+    {
+        return categoryBarNames_;
+    }
+    unsigned int getCategoryBarSelectedIndex() const
+    {
+        return categoryBarSelectedIndex_;
+    }
     void setRailSpacing(float spacing) { railSpacing_ = spacing; }
     void setRailAnchorY(float y) { railAnchorY_ = y; }
     bool isIndependentRails() const;
@@ -183,6 +232,30 @@ private:
     bool independentRails_;
     unsigned int visibleRails_;
     bool loopRails_;
+    bool categoryNavigation_ = false;
+    // STREAM: category bar geometry supplied by the layout XML.
+    struct CategoryBarStyle
+    {
+        float x = 0.0f;
+        float y = 0.0f;
+        float spacing = 0.0f;
+        float underlineOffset = 0.0f;
+        float underlineHeight = 0.0f;
+        unsigned int labelLayer = 0;
+        unsigned int underlineLayer = 0;
+    };
+
+    CategoryBarStyle categoryBarStyle_;
+    Font *categoryBarSelectedFont_ = nullptr;
+    Font *categoryBarInactiveFont_ = nullptr;
+    Container *categoryBarBackgroundTemplate_ = nullptr;
+    float categoryBarBackgroundAlpha_ = 0.0f;
+    Container *categoryBarUnderlineTemplate_ = nullptr;
+    float categoryBarUnderlineAlpha_ = 0.0f;
+    Text *categoryBarTemplate_ = nullptr;
+    std::vector<Text *> categoryBarLabels_;
+    std::vector<std::string> categoryBarNames_;
+    unsigned int categoryBarSelectedIndex_ = 0;
     float railSpacing_;
     float railAnchorY_;
     unsigned int focusedRailIndex_;

@@ -62,6 +62,30 @@ void Text::setText( std::string text, int id )
         textData_ = text;
 }
 
+float Text::getMeasuredWidth() const
+{
+    Font *font = baseViewInfo.font ? baseViewInfo.font : fontInst_;
+    if (!font || font->getHeight() <= 0)
+        return 0.0f;
+
+    const float scale = baseViewInfo.FontSize /
+                        static_cast<float>(font->getHeight());
+
+    float width = 0.0f;
+    for (unsigned int i = 0; i < textData_.size(); ++i)
+    {
+        Font::GlyphInfo glyph;
+        if (font->getRect(static_cast<unsigned char>(textData_[i]), glyph))
+        {
+            if (glyph.minX < 0)
+                width += glyph.minX;
+            width += glyph.advance;
+        }
+    }
+
+    return width * scale;
+}
+
 void Text::draw( )
 {
     Component::draw( );

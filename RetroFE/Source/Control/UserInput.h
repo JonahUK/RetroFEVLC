@@ -72,6 +72,8 @@ public:
         KeyCodePause,
         KeyCodeRestart,
         KeyCodeSearch,
+        KeyCodeCategoryPrevious,
+        KeyCodeCategoryNext,
         KeyCodeMax
     };
 

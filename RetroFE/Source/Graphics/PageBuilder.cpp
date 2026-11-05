@@ -217,6 +217,12 @@ Page *PageBuilder::buildPage( std::string collectionName, CollectionInfo *railSo
                     std::string(loopRailsXml->value()) == "true"
                 );
 
+                xml_attribute<> *categoryNavigationXml = root->first_attribute("categoryNavigation");
+                page->setCategoryNavigation(
+                    page->isIndependentRails() && categoryNavigationXml &&
+                    std::string(categoryNavigationXml->value()) == "true"
+                );
+
                 xml_attribute<> *visibleRailsXml = root->first_attribute("visibleRails");
                 page->setVisibleRails(
                     page->isIndependentRails() && visibleRailsXml
@@ -490,6 +496,87 @@ bool PageBuilder::buildComponents(xml_node<> *layout, Page *page, CollectionInfo
         page->pushMenu(scrollingList, index);
     }
 
+    // STREAM: optional category bar geometry, entirely XML-defined.
+    // Labels are populated later from the discovered collection hierarchy.
+    if (page->isCategoryNavigation())
+    {
+        if (xml_node<> *barXml = layout->first_node("categoryBar"))
+        {
+            auto readFloat = [barXml](const char *name) -> float
+            {
+                xml_attribute<> *attribute = barXml->first_attribute(name);
+                return attribute ? Utils::convertFloat(attribute->value()) : 0.0f;
+            };
+
+            auto readLayer = [barXml](const char *name) -> unsigned int
+            {
+                xml_attribute<> *attribute = barXml->first_attribute(name);
+                if (!attribute)
+                    return 0;
+                const int value = Utils::convertInt(attribute->value());
+                return value >= 0 ? static_cast<unsigned int>(value) : 0;
+            };
+
+            // Create a reusable XML-styled text template.
+            // The page owns it through its normal component collection.
+            Font *categoryFont = addFont(barXml, NULL);
+            xml_attribute<> *monitorXml = barXml->first_attribute("monitor");
+            const int categoryMonitor = monitorXml
+                ? Utils::convertInt(monitorXml->value()) : monitor_;
+            Text *categoryTemplate = new Text("", *page, categoryFont, categoryMonitor);
+            buildViewInfo(barXml, categoryTemplate->baseViewInfo);
+            loadTweens(categoryTemplate, barXml);
+
+            if (page->addComponent(categoryTemplate))
+                page->setCategoryBarTemplate(categoryTemplate);
+            else
+                delete categoryTemplate;
+            // Optional XML-defined selected/inactive category fonts.
+            // Missing definitions fall back to the category bar font.
+            Font *selectedFont = NULL;
+            Font *inactiveFont = NULL;
+
+            if (xml_node<> *selectedXml = barXml->first_node("selected"))
+                selectedFont = addFont(selectedXml, barXml);
+
+            if (xml_node<> *inactiveXml = barXml->first_node("inactive"))
+                inactiveFont = addFont(inactiveXml, barXml);
+
+            page->setCategoryBarFonts(selectedFont, inactiveFont);
+            // Optional XML-defined category navigation background.
+            if (xml_node<> *backgroundXml = barXml->first_node("background"))
+            {
+                Container *background = new Container(*page);
+                buildViewInfo(backgroundXml, background->baseViewInfo);
+                loadTweens(background, backgroundXml);
+
+                if (page->addComponent(background))
+                    page->setCategoryBarBackgroundTemplate(background);
+                else
+                    delete background;
+            }
+            // Optional XML-defined selected-category underline.
+            if (xml_node<> *underlineXml = barXml->first_node("underline"))
+            {
+                Container *underline = new Container(*page);
+                buildViewInfo(underlineXml, underline->baseViewInfo);
+                loadTweens(underline, underlineXml);
+
+                if (page->addComponent(underline))
+                    page->setCategoryBarUnderlineTemplate(underline);
+                else
+                    delete underline;
+            }
+            page->configureCategoryBar(
+                readFloat("x"),
+                readFloat("y"),
+                readFloat("spacing"),
+                readFloat("underlineOffset"),
+                readFloat("underlineHeight"),
+                readLayer("layer"),
+                readLayer("underlineLayer"));
+        }
+    }
     for(xml_node<> *componentXml = layout->first_node("container"); componentXml; componentXml = componentXml->next_sibling("container"))
     {
         Container *c = new Container(*page);
@@ -668,6 +755,7 @@ void PageBuilder::loadReloadableImages(xml_node<> *layout, std::string tagName, 
         xml_attribute<> *mode              = componentXml->first_attribute("mode");
         xml_attribute<> *timeFormatXml     = componentXml->first_attribute("timeFormat");
         xml_attribute<> *textFormatXml     = componentXml->first_attribute("textFormat");
+        xml_attribute<> *separatorXml      = componentXml->first_attribute("separator");
         xml_attribute<> *singlePrefixXml   = componentXml->first_attribute("singlePrefix");
         xml_attribute<> *singlePostfixXml  = componentXml->first_attribute("singlePostfix");
         xml_attribute<> *pluralPrefixXml   = componentXml->first_attribute("pluralPrefix");
@@ -782,7 +870,12 @@ void PageBuilder::loadReloadableImages(xml_node<> *layout, std::string tagName, 
                 {
                     pluralPostfix = pluralPostfixXml->value();
                 }
-                c = new ReloadableText(type->value(), *page, config_, systemMode, font, layoutKey, timeFormat, textFormat, singlePrefix, singlePostfix, pluralPrefix, pluralPostfix);
+                std::string separator = ", ";
+                if (separatorXml)
+                {
+                    separator = separatorXml->value();
+                }
+                c = new ReloadableText(type->value(), *page, config_, systemMode, font, layoutKey, timeFormat, textFormat, singlePrefix, singlePostfix, pluralPrefix, pluralPostfix, separator);
                 c->setId( id );
                 xml_attribute<> *menuScrollReload = componentXml->first_attribute("menuScrollReload");
                 if (menuScrollReload &&

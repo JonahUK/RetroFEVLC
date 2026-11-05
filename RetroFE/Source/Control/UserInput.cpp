@@ -62,6 +62,8 @@ bool UserInput::initialize()
     MapKey("collectionDown", KeyCodeCollectionDown, false );
     MapKey("collectionLeft", KeyCodeCollectionLeft, false );
     MapKey("collectionRight", KeyCodeCollectionRight, false );
+    MapKey("categoryPrevious", KeyCodeCategoryPrevious, false);
+    MapKey("categoryNext", KeyCodeCategoryNext, false);
     MapKey("pageDown", KeyCodePageDown, false );
     MapKey("pageUp", KeyCodePageUp, false );
     MapKey("letterDown", KeyCodeLetterDown, false);

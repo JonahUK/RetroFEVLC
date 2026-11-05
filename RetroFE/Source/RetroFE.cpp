@@ -55,6 +55,8 @@
 #endif
 
 
+static bool streamHasChildMenu(const std::string &collectionName);
+
 RetroFE::RetroFE( Configuration &c )
     : initialized(false)
     , initializeError(false)
@@ -64,6 +66,9 @@ RetroFE::RetroFE( Configuration &c )
     , metadb_(NULL)
     , input_(config_)
     , currentPage_(NULL)
+    , categoryIndex_(0)
+    , categoryNavigationEnabled_(false)
+    , categorySwitchDirection_(0)
     , keyInputDisable_(0)
     , currentTime_(0)
     , lastLaunchReturnTime_(0)
@@ -477,7 +482,7 @@ bool RetroFE::run( )
                 // account for when returning from a menu and the previous key was still "stuck"
                 if ( lastLaunchReturnTime_ == 0 || (currentTime_ - lastLaunchReturnTime_ > .3) )
                 {
-                    if ( currentPage_->isIdle( ) )
+                    if ( (currentPage_->isIndependentRails() ? currentPage_->isMenuIdle() : currentPage_->isIdle()) )
                     {
                         state = processUserInput( currentPage_ );
                     }
@@ -540,8 +545,74 @@ bool RetroFE::run( )
                 config_.setProperty( "currentCollection", firstCollection );
 
                 CollectionInfo *info = getCollection(firstCollection);
+
+                // Discover categories from Main before building the rail page.
+                // Category navigation remains opt-in through the layout XML.
+                categoryNames_.clear();
+                categoryIndex_ = 0;
+                categorySwitchDirection_ = 0;
+
+                if (info)
+                {
+                    for (const Item *categoryItem : info->items)
+                    {
+                        if (categoryItem && !categoryItem->leaf &&
+                            !categoryItem->name.empty() &&
+                            streamHasChildMenu(categoryItem->name))
+                        {
+                            categoryNames_.push_back(categoryItem->name);
+                        }
+                    }
+                }
+
+                // Inspect the layout's category-navigation opt-in.
                 currentPage_ = loadPage(info);
+                categoryNavigationEnabled_ =
+                    currentPage_ && currentPage_->isCategoryNavigation() &&
+                    !categoryNames_.empty();
+
+                if (categoryNavigationEnabled_)
+                {
+                    const std::string categoryName = categoryNames_.front();
+                    CollectionInfo *categoryInfo = getCollection(categoryName);
+
+                    if (categoryInfo)
+                    {
+                        Page *categoryPage = loadPage(categoryInfo);
+
+                        if (categoryPage)
+                        {
+                            currentPage_->deInitialize();
+                            delete currentPage_;
+                            delete info;
+
+                            currentPage_ = categoryPage;
+                            info = categoryInfo;
+                            config_.setProperty("currentCollection", categoryName);
+                        }
+                        else
+                        {
+                            delete categoryInfo;
+                            categoryNavigationEnabled_ = false;
+                        }
+                    }
+                    else
+                    {
+                        categoryNavigationEnabled_ = false;
+                    }
+                }
+
+                if (!categoryNavigationEnabled_)
+                    categoryNames_.clear();
+
+                Logger::write(Logger::ZONE_INFO, "RetroFE",
+                    "STREAM categories discovered: " +
+                    std::to_string(categoryNames_.size()));
+
                 splashMode = false;
+
+                if (currentPage_ && categoryNavigationEnabled_)
+                    currentPage_->setCategoryBarData(categoryNames_, categoryIndex_);
 
                 if ( currentPage_ )
                 {
@@ -560,7 +631,7 @@ bool RetroFE::run( )
 
                         for (const std::string &railName : railNames)
                         {
-                            if (railName == firstCollection)
+                            if (railName == info->name)
                                 continue;
 
                             const std::string railPath = Utils::combinePath(
@@ -720,12 +791,126 @@ bool RetroFE::run( )
             {
                 state = state_tmp;
             }
-            else if (currentPage_->isIdle( ))
+            else if (currentPage_->isIndependentRails() ? currentPage_->isMenuIdle() : currentPage_->isIdle())
             {
                 state = RETROFE_IDLE;
             }
             break;
 
+        // STREAM: category switching is separate from nested page navigation.
+        // Never push a category switch onto the normal page stack.
+        case RETROFE_CATEGORY_SWITCH_REQUEST:
+            if (!categoryNavigationEnabled_ ||
+                categoryNames_.size() < 2 ||
+                !currentPage_->isCategoryNavigation())
+            {
+                state = RETROFE_IDLE;
+                break;
+            }
+
+            currentPage_->stop();
+            state = RETROFE_CATEGORY_SWITCH_EXIT;
+            break;
+
+        case RETROFE_CATEGORY_SWITCH_EXIT:
+            if (currentPage_->isMenuIdle())
+            {
+                const unsigned int count =
+                    static_cast<unsigned int>(categoryNames_.size());
+
+                const unsigned int nextIndex =
+                    categorySwitchDirection_ < 0
+                        ? (categoryIndex_ + count - 1) % count
+                        : (categoryIndex_ + 1) % count;
+
+                const std::string categoryName = categoryNames_[nextIndex];
+
+                CollectionInfo *categoryInfo = getCollection(categoryName);
+
+                if (!categoryInfo)
+                {
+                    currentPage_->start();
+                    state = RETROFE_ENTER;
+                    break;
+                }
+
+                Page *newPage = loadPage(categoryInfo);
+
+                if (!newPage)
+                {
+                    delete categoryInfo;
+                    currentPage_->start();
+                    state = RETROFE_ENTER;
+                    break;
+                }
+
+                if (newPage->isCategoryNavigation())
+                    newPage->setCategoryBarData(categoryNames_, nextIndex);
+
+                newPage->pushCollection(categoryInfo);
+                newPage->selectPlaylist("all");
+
+                if (newPage->isIndependentRails())
+                {
+                    const std::vector<std::string> railNames =
+                        newPage->getRequestedRailCollections();
+
+                    for (const std::string &railName : railNames)
+                    {
+                        if (railName == categoryInfo->name)
+                            continue;
+
+                        const std::string railPath = Utils::combinePath(
+                            Configuration::absolutePath,
+                            "collections",
+                            railName);
+
+                        struct stat railStat;
+
+                        if (stat(railPath.c_str(), &railStat) != 0 ||
+                            (railStat.st_mode & S_IFMT) != S_IFDIR)
+                        {
+                            Logger::write(Logger::ZONE_ERROR, "RetroFE",
+                                "STREAM category rail directory missing: " +
+                                railName);
+                            continue;
+                        }
+
+                        CollectionInfo *railCollection = getCollection(railName);
+
+                        if (railCollection &&
+                            !newPage->registerRailCollection(railCollection))
+                        {
+                            delete railCollection;
+                        }
+                    }
+
+                    newPage->bindRailCollections();
+                }
+
+                newPage->onNewItemSelected();
+                newPage->reallocateMenuSpritePoints();
+
+                currentPage_->deInitialize();
+                delete currentPage_;
+
+                currentPage_ = newPage;
+                categoryIndex_ = nextIndex;
+                categorySwitchDirection_ = 0;
+
+                config_.setProperty("currentCollection", categoryName);
+
+                Logger::write(Logger::ZONE_INFO, "RetroFE",
+                    "STREAM category switched to: " + categoryName);
+
+                state = RETROFE_CATEGORY_SWITCH_LOAD_ART;
+            }
+            break;
+
+        case RETROFE_CATEGORY_SWITCH_LOAD_ART:
+            currentPage_->start();
+            state = RETROFE_IDLE;
+            break;
         // Next page; start onMenuExit animation
         case RETROFE_NEXT_PAGE_REQUEST:
             currentPage_->exitMenu( );
@@ -1591,11 +1776,35 @@ RetroFE::RETROFE_STATE RetroFE::processUserInput( Page *page )
         }
     }
 
+    // STREAM: configurable top-level category navigation.
+    // Category names come from the collection hierarchy, not the layout.
+    if (categoryNavigationEnabled_ &&
+        page->isCategoryNavigation() &&
+        page->getMenuDepth() == 1 &&
+        categoryNames_.size() > 1 &&
+        page->isMenuIdle() &&
+        currentTime_ - keyLastTime_ > keyDelayTime_)
+    {
+        if (input_.keystate(UserInput::KeyCodeCategoryPrevious))
+        {
+            attract_.reset();
+            categorySwitchDirection_ = -1;
+            keyLastTime_ = currentTime_;
+            return RETROFE_CATEGORY_SWITCH_REQUEST;
+        }
+        else if (input_.keystate(UserInput::KeyCodeCategoryNext))
+        {
+            attract_.reset();
+            categorySwitchDirection_ = 1;
+            keyLastTime_ = currentTime_;
+            return RETROFE_CATEGORY_SWITCH_REQUEST;
+        }
+    }
     // STREAM: switch between independent horizontal rails.
     // Existing layouts retain their original input handling.
     if (page->isIndependentRails() &&
         page->isHorizontalScroll() &&
-        page->isIdle() &&
+        page->isMenuIdle() &&
         currentTime_ - keyLastTime_ > keyDelayTime_)
     {
         if (input_.keystate(UserInput::KeyCodeDown))
@@ -2455,6 +2664,63 @@ Page *RetroFE::loadSplashPage( )
 
 
 // Load a collection
+
+
+static bool streamHasChildMenu(const std::string &collectionName)
+{
+    if (collectionName.empty() ||
+        collectionName == "." ||
+        collectionName == ".." ||
+        collectionName.find('/') != std::string::npos ||
+        collectionName.find('\\') != std::string::npos)
+        return false;
+
+    const std::string collectionPath = Utils::combinePath(
+        Configuration::absolutePath, "collections", collectionName);
+
+    const std::string menuFile = Utils::combinePath(
+        collectionPath, "menu.txt");
+
+    struct stat fileStat;
+    if (stat(menuFile.c_str(), &fileStat) == 0 &&
+        (fileStat.st_mode & S_IFMT) == S_IFREG)
+    {
+        return true;
+    }
+
+    const std::string menuPath = Utils::combinePath(
+        collectionPath, "menu");
+
+    DIR *directory = opendir(menuPath.c_str());
+    if (!directory)
+        return false;
+
+    bool hasChildren = false;
+    struct dirent *entry;
+
+    while ((entry = readdir(directory)) != NULL)
+    {
+        const std::string filename = entry->d_name;
+
+        if (filename.length() <= 4 ||
+            filename.compare(filename.length() - 4, 4, ".txt") != 0)
+            continue;
+
+        const std::string childPath =
+            Utils::combinePath(menuPath, filename);
+
+        if (stat(childPath.c_str(), &fileStat) == 0 &&
+            (fileStat.st_mode & S_IFMT) == S_IFREG)
+        {
+            hasChildren = true;
+            break;
+        }
+    }
+
+    closedir(directory);
+    return hasChildren;
+}
+
 CollectionInfo *RetroFE::getCollection(std::string collectionName)
 {
 

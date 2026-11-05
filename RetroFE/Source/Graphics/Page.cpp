@@ -17,6 +17,7 @@
 #include "Page.h"
 #include "ComponentItemBinding.h"
 #include "Component/Component.h"
+#include "Component/Container.h"
 #include "../Collection/CollectionInfo.h"
 #include "Component/Text.h"
 #include "../Utility/Log.h"
@@ -140,7 +141,7 @@ bool Page::moveRailFocus(bool forward)
             // The rail immediately preceding focus sits one row above.
             // All following rails retain their circular order below.
             const int relative =
-                forwardDistance == count - 1
+                count > 2 && forwardDistance == count - 1
                     ? -1
                     : static_cast<int>(forwardDistance);
 
@@ -174,8 +175,22 @@ bool Page::moveRailFocus(bool forward)
     previousRail->triggerRailEvent("railExit", 0);
     nextRail->triggerRailEvent("railEnter", 0);
 
+    // Expose the same generic focus events to page-level components.
+    // Layout XML decides which components animate and how.
+    for(Component *component : LayerComponents)
+    {
+        if(component)
+            component->triggerEvent("railExit", menuDepth_ - 1);
+    }
+
     focusedRailIndex_ = next;
     highlightLoadArt();
+
+    for(Component *component : LayerComponents)
+    {
+        if(component)
+            component->triggerEvent("railEnter", menuDepth_ - 1);
+    }
     return true;
 }
 
@@ -385,6 +400,93 @@ void Page::setStatusTextComponent(Text *t)
     textStatusComponent_ = t;
 }
 
+
+void Page::setCategoryBarBackgroundTemplate(Container *background)
+{
+    categoryBarBackgroundTemplate_ = background;
+
+    if (background)
+    {
+        categoryBarBackgroundAlpha_ = background->baseViewInfo.BackgroundAlpha;
+        background->baseViewInfo.BackgroundAlpha = 0.0f;
+    }
+}
+
+void Page::setCategoryBarUnderlineTemplate(Container *underline)
+{
+    categoryBarUnderlineTemplate_ = underline;
+
+    if (underline)
+    {
+        categoryBarUnderlineAlpha_ = underline->baseViewInfo.BackgroundAlpha;
+        underline->baseViewInfo.BackgroundAlpha = 0.0f;
+    }
+}
+
+void Page::buildCategoryBarLabels()
+{
+    if (!categoryNavigation_ || !categoryBarTemplate_ ||
+        categoryBarNames_.empty() || !categoryBarLabels_.empty())
+        return;
+
+    if (categoryBarBackgroundTemplate_)
+    {
+        categoryBarBackgroundTemplate_->baseViewInfo.BackgroundAlpha =
+            categoryBarBackgroundAlpha_;
+    }
+
+    float nextX = categoryBarStyle_.x;
+
+    for (unsigned int index = 0;
+         index < categoryBarNames_.size(); ++index)
+    {
+        const std::string &name = categoryBarNames_[index];
+        const bool selected = index == categoryBarSelectedIndex_;
+
+        Font *font = selected
+            ? categoryBarSelectedFont_
+            : categoryBarInactiveFont_;
+
+        if (!font)
+            font = categoryBarTemplate_->getBaseFont();
+
+        Text *label = new Text(
+            name, *this, font,
+            categoryBarTemplate_->baseViewInfo.Monitor);
+
+        // Initialise animation state for this generated component.
+        label->setTweens(new AnimationEvents());
+
+        label->baseViewInfo = categoryBarTemplate_->baseViewInfo;
+        label->baseViewInfo.font = font;
+        label->baseViewInfo.X = nextX;
+        label->baseViewInfo.Y = categoryBarStyle_.y;
+        label->baseViewInfo.Layer = categoryBarStyle_.labelLayer;
+
+        const float labelWidth = label->getMeasuredWidth();
+        if (selected && categoryBarUnderlineTemplate_)
+        {
+            auto &underline = categoryBarUnderlineTemplate_->baseViewInfo;
+            underline.X = label->baseViewInfo.X;
+            underline.Y = label->baseViewInfo.Y +
+                          categoryBarStyle_.underlineOffset;
+            underline.Width = labelWidth;
+            underline.Height = categoryBarStyle_.underlineHeight;
+            underline.Layer = categoryBarStyle_.underlineLayer;
+            underline.BackgroundAlpha = categoryBarUnderlineAlpha_;
+        }
+
+        if (addComponent(label))
+        {
+            registerCategoryBarLabel(label);
+            nextX += labelWidth + categoryBarStyle_.spacing;
+        }
+        else
+        {
+            delete label;
+        }
+    }
+}
 
 bool Page::addComponent(Component *c)
 {

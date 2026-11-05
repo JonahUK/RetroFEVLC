@@ -36,6 +36,8 @@ public:
     void     freeGraphicsMemory( );
     void     deInitializeFonts( );
     void     initializeFonts( );
+    float    getMeasuredWidth() const;
+    Font    *getBaseFont() const { return fontInst_; }
     void     draw( );
 
 private:
