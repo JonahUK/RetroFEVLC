@@ -24,5 +24,6 @@
 class ImageBuilder
 {
 public:
+    bool FindImageFile(std::string path, std::string name, std::string &file);
     Image * CreateImage(std::string path, Page &p, std::string name, int monitor);
 };

@@ -17,6 +17,7 @@
 
 #include "../Collection/CollectionInfo.h"
 
+#include <functional>
 #include <map>
 #include <string>
 #include <list>
@@ -51,6 +52,13 @@ public:
     bool pushCollection(CollectionInfo *collection);
     bool registerRailCollection(CollectionInfo *collection);
     void bindRailCollections();
+    bool ensureRailCollectionLoaded(ScrollingList *rail);
+    void prepareVisibleRailCollections();
+    void setRailCollectionLoader(
+        const std::function<CollectionInfo *(const std::string &)> &loader)
+    {
+        railCollectionLoader_ = loader;
+    }
     std::vector<std::string> getRequestedRailCollections() const;
     bool popCollection();
     void enterMenu();
@@ -150,6 +158,8 @@ public:
     void update(float dt);
     void cleanup();
     void draw();
+    void suspendVideos();
+    void resumeVideos();
     void freeGraphicsMemory();
     void allocateGraphicsMemory();
     void deInitializeFonts( );
@@ -178,6 +188,7 @@ public:
     void  togglePlaylist();
     void  updateLastPlayedPlaylist( Item *item );
     void  reallocateMenuSpritePoints();
+    void  allocateVisibleRailSprites();
     bool  isMenuScrolling();
     bool  isPlaying();
     void  resetScrollPeriod();
@@ -223,6 +234,7 @@ private:
     CollectionVector_T collections_;
     CollectionVector_T deleteCollections_;
     std::map<std::string, CollectionInfo *> railCollections_;
+    std::function<CollectionInfo *(const std::string &)> railCollectionLoader_;
 
     static const unsigned int NUM_LAYERS = 20;
     std::vector<Component *> LayerComponents;
@@ -259,6 +271,7 @@ private:
     float railSpacing_;
     float railAnchorY_;
     unsigned int focusedRailIndex_;
+    std::vector<ScrollingList *> allocatedRailSprites_;
     bool scrollActive_;
 
     Item *selectedItem_;

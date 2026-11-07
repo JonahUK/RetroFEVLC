@@ -24,6 +24,7 @@
 class VideoBuilder
 {
 public:
+    bool FindVideoFile(std::string path, std::string name, std::string &file);
     VideoComponent * createVideo(std::string path, Page &page, std::string name, int monitor, bool isTypeVideo, int numLoops = -1);
 
 private:

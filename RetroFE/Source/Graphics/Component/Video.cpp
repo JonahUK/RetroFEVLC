@@ -70,6 +70,25 @@ void Video::update(float dt)
 }
 
 
+void Video::suspendVideo()
+{
+    VideoComponent *component = dynamic_cast<VideoComponent *>(video_);
+
+    if (component)
+    {
+        component->suspendVideo();
+    }
+}
+
+void Video::resumeVideo()
+{
+    VideoComponent *component = dynamic_cast<VideoComponent *>(video_);
+
+    if (component)
+    {
+        component->resumeVideo();
+    }
+}
 void Video::freeGraphicsMemory( )
 {
     Component::freeGraphicsMemory( );

@@ -29,6 +29,7 @@ public:
     void draw();
 
 protected:
+    SDL_Texture *loadTexture();
     SDL_Texture *texture_;
     std::string  file_;
     std::string  altFile_;

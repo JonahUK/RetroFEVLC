@@ -18,9 +18,8 @@
 #include "../../Utility/Log.h"
 #include <fstream>
 
-Image * ImageBuilder::CreateImage(std::string path, Page &p, std::string name, int monitor)
+bool ImageBuilder::FindImageFile(std::string path, std::string name, std::string &file)
 {
-    Image *image = NULL;
     std::vector<std::string> extensions;
 
     extensions.push_back("png");
@@ -31,12 +30,16 @@ Image * ImageBuilder::CreateImage(std::string path, Page &p, std::string name, i
     extensions.push_back("JPEG");
 
     std::string prefix = Utils::combinePath(path, name);
-    std::string file;
+    return Utils::findMatchingFile(prefix, extensions, file);
+}
 
-    if(Utils::findMatchingFile(prefix, extensions, file))
+Image * ImageBuilder::CreateImage(std::string path, Page &p, std::string name, int monitor)
+{
+    std::string file;
+    if (FindImageFile(path, name, file))
     {
-        image = new Image(file, "", p, monitor);
+        return new Image(file, "", p, monitor);
     }
 
-    return image;
+    return NULL;
 }

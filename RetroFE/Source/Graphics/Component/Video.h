@@ -26,6 +26,8 @@ public:
     virtual ~Video( );
     static void setEnabled(bool enabled);
     void update(float dt);
+    void suspendVideo();
+    void resumeVideo();
     void freeGraphicsMemory( );
     void allocateGraphicsMemory( );
     void draw( );

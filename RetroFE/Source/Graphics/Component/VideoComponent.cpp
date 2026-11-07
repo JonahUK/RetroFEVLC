@@ -77,6 +77,31 @@ void VideoComponent::allocateGraphicsMemory()
     }
 }
 
+void VideoComponent::suspendVideo()
+{
+    // Preserve pending resume state on repeated suspension.
+    if (suspendedForCache_)
+        return;
+
+    if (videoInst_ && isPlaying_)
+    {
+        videoInst_->stop();
+        isPlaying_ = false;
+        suspendedForCache_ = true;
+    }
+}
+
+void VideoComponent::resumeVideo()
+{
+    if (videoInst_ && suspendedForCache_)
+    {
+        suspendedForCache_ = false;
+        if (!isPlaying_)
+        {
+            isPlaying_ = videoInst_->play(videoFile_);
+        }
+    }
+}
 void VideoComponent::freeGraphicsMemory()
 {
     videoInst_->stop();

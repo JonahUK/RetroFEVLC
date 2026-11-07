@@ -22,6 +22,8 @@
 #include "Component/Text.h"
 #include "../Utility/Log.h"
 #include "Component/ScrollingList.h"
+#include "Component/Video.h"
+#include "Component/ReloadableMedia.h"
 #include "../Sound/Sound.h"
 #include "ComponentItemBindingBuilder.h"
 #include "PageBuilder.h"
@@ -184,6 +186,11 @@ bool Page::moveRailFocus(bool forward)
     }
 
     focusedRailIndex_ = next;
+
+    // Load newly visible rails on demand.
+    // Previously loaded rails retain their graphics while this page is active.
+    allocateVisibleRailSprites();
+
     highlightLoadArt();
 
     for(Component *component : LayerComponents)
@@ -1191,6 +1198,60 @@ unsigned int Page::getSelectedIndex()
 }
 
 
+bool Page::ensureRailCollectionLoaded(ScrollingList *rail)
+{
+    if (!rail || !independentRails_)
+        return false;
+
+    const std::string &name = rail->requestedCollection;
+
+    if (name.empty())
+        return false;
+
+    CollectionInfo *collection = nullptr;
+
+    for (const auto &info : collections_)
+    {
+        if (info.collection && info.collection->name == name)
+        {
+            collection = info.collection;
+            break;
+        }
+    }
+
+    if (!collection)
+    {
+        auto existing = railCollections_.find(name);
+
+        if (existing != railCollections_.end())
+            collection = existing->second;
+    }
+
+    if (!collection)
+    {
+        if (!railCollectionLoader_)
+            return false;
+
+        collection = railCollectionLoader_(name);
+
+        if (!collection)
+            return false;
+
+        if (!registerRailCollection(collection))
+        {
+            delete collection;
+            return false;
+        }
+    }
+
+    if (rail->getItems() != &collection->items)
+        rail->setItems(&collection->items);
+
+    rail->collectionName = collection->name;
+
+    return true;
+}
+
 bool Page::registerRailCollection(CollectionInfo *collection)
 {
     if (!independentRails_ || !collection)
@@ -1267,7 +1328,12 @@ void Page::bindRailCollections()
         {
             auto found = railCollections_.find(menu->requestedCollection);
             if (found == railCollections_.end() || !found->second)
+            {
+                if (menu->getItems())
+                    menu->setItems(nullptr);
+                menu->collectionName = menu->requestedCollection;
                 continue;
+            }
 
             target = found->second;
         }
@@ -1307,6 +1373,12 @@ bool Page::pushCollection(CollectionInfo *collection)
             auto found = railCollections_.find(menu->requestedCollection);
             if (found != railCollections_.end() && found->second)
                 target = found->second;
+            else
+            {
+                menu->setItems(nullptr);
+                menu->collectionName = menu->requestedCollection;
+                continue;
+            }
         }
 
         if (menu->getItems() != &target->items)
@@ -1902,6 +1974,10 @@ CollectionInfo *Page::getCollection()
 
 void Page::freeGraphicsMemory()
 {
+    // Graphics textures are being released; cached rail allocation
+    // state must not survive the release.
+    allocatedRailSprites_.clear();
+
     for(MenuVector_T::iterator it = menus_.begin(); it != menus_.end(); it++)
     {
         for(std::vector<ScrollingList *>::iterator it2 = menus_[std::distance(menus_.begin(), it)].begin(); it2 != menus_[std::distance(menus_.begin(), it)].end(); it2++)
@@ -1934,7 +2010,39 @@ void Page::allocateGraphicsMemory()
             for(std::vector<ScrollingList *>::iterator it2 = menus_[std::distance(menus_.begin(), it)].begin(); it2 != menus_[std::distance(menus_.begin(), it)].end(); it2++)
             {
                 ScrollingList *menu = *it2;
+
+                if(independentRails_ && visibleRails_ > 0)
+                {
+                    std::vector<ScrollingList *>::iterator found =
+                        std::find(activeMenu_.begin(), activeMenu_.end(), menu);
+
+                    if(found != activeMenu_.end())
+                    {
+                        const unsigned int count =
+                            static_cast<unsigned int>(activeMenu_.size());
+
+                        const unsigned int r =
+                            static_cast<unsigned int>(found - activeMenu_.begin());
+
+                        const bool visible = loopRails_
+                            ? (r + count - focusedRailIndex_) % count < visibleRails_
+                            : r >= focusedRailIndex_ &&
+                              r - focusedRailIndex_ < visibleRails_;
+
+                        if(!visible)
+                            continue;
+                    }
+                }
+
                 menu->allocateGraphicsMemory();
+
+                if(independentRails_ && visibleRails_ > 0 &&
+                   std::find(allocatedRailSprites_.begin(),
+                             allocatedRailSprites_.end(),
+                             menu) == allocatedRailSprites_.end())
+                {
+                    allocatedRailSprites_.push_back(menu);
+                }
             }
         }
     }
@@ -2007,8 +2115,103 @@ bool Page::isSelectPlaying()
 }
 
 
+void Page::prepareVisibleRailCollections()
+{
+    if (!independentRails_)
+        return;
+
+    const unsigned int count =
+        static_cast<unsigned int>(activeMenu_.size());
+
+    if (count == 0 || focusedRailIndex_ >= count)
+        return;
+
+    for (unsigned int r = 0; r < count; ++r)
+    {
+        ScrollingList *rail = activeMenu_[r];
+
+        if (!rail)
+            continue;
+
+        bool visible = visibleRails_ == 0;
+
+        if (!visible && loopRails_)
+        {
+            const unsigned int distance =
+                (r + count - focusedRailIndex_) % count;
+
+            visible = distance < visibleRails_;
+        }
+        else if (!visible)
+        {
+            visible = r >= focusedRailIndex_ &&
+                r - focusedRailIndex_ < visibleRails_;
+        }
+
+        if (visible)
+            ensureRailCollectionLoaded(rail);
+    }
+}
+
+void Page::allocateVisibleRailSprites()
+{
+    if(!independentRails_ || visibleRails_ == 0)
+        return;
+
+    const unsigned int count =
+        static_cast<unsigned int>(activeMenu_.size());
+
+    if(count == 0 || focusedRailIndex_ >= count)
+        return;
+
+    for(unsigned int r = 0; r < count; ++r)
+    {
+        ScrollingList *rail = activeMenu_[r];
+
+        if(!rail)
+            continue;
+
+        bool visible = false;
+
+        if(loopRails_)
+        {
+            const unsigned int distance =
+                (r + count - focusedRailIndex_) % count;
+
+            visible = distance < visibleRails_;
+        }
+        else
+        {
+            visible = r >= focusedRailIndex_ &&
+                r - focusedRailIndex_ < visibleRails_;
+        }
+
+        if(!visible)
+            continue;
+
+        // Bind the visible rail before allocating its sprites.
+        ensureRailCollectionLoaded(rail);
+
+        if(std::find(allocatedRailSprites_.begin(),
+                     allocatedRailSprites_.end(),
+                     rail) != allocatedRailSprites_.end())
+            continue;
+
+        rail->deallocateSpritePoints();
+        rail->allocateSpritePoints();
+        allocatedRailSprites_.push_back(rail);
+    }
+}
+
 void Page::reallocateMenuSpritePoints()
 {
+    if(independentRails_ && visibleRails_ > 0)
+    {
+        allocatedRailSprites_.clear();
+        allocateVisibleRailSprites();
+        return;
+    }
+
     for(std::vector<ScrollingList *>::iterator it = activeMenu_.begin(); it != activeMenu_.end(); it++)
     {
         ScrollingList *menu = *it;
@@ -2219,6 +2422,35 @@ void Page::skipBackwardp( )
 }
 
 
+void Page::suspendVideos()
+{
+    for (Component *component : LayerComponents)
+    {
+        if (ReloadableMedia *media = dynamic_cast<ReloadableMedia *>(component))
+        {
+            media->suspendVideo();
+        }
+        else if (Video *video = dynamic_cast<Video *>(component))
+        {
+            video->suspendVideo();
+        }
+    }
+}
+
+void Page::resumeVideos()
+{
+    for (Component *component : LayerComponents)
+    {
+        if (ReloadableMedia *media = dynamic_cast<ReloadableMedia *>(component))
+        {
+            media->resumeVideo();
+        }
+        else if (Video *video = dynamic_cast<Video *>(component))
+        {
+            video->resumeVideo();
+        }
+    }
+}
 void Page::pause( )
 {
     for(std::vector<Component *>::iterator it = LayerComponents.begin(); it != LayerComponents.end(); ++it)

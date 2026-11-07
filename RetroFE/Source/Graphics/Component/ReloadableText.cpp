@@ -25,7 +25,7 @@
 #include <time.h>
 #include <algorithm>
 
-ReloadableText::ReloadableText(std::string type, Page &page, Configuration &config, bool systemMode, Font *font, std::string layoutKey, std::string timeFormat, std::string textFormat, std::string singlePrefix, std::string singlePostfix, std::string pluralPrefix, std::string pluralPostfix)
+ReloadableText::ReloadableText(std::string type, Page &page, Configuration &config, bool systemMode, Font *font, std::string layoutKey, std::string timeFormat, std::string textFormat, std::string singlePrefix, std::string singlePostfix, std::string pluralPrefix, std::string pluralPostfix, std::string separator)
     : Component(page)
     , config_(config)
     , systemMode_(systemMode)
@@ -35,6 +35,7 @@ ReloadableText::ReloadableText(std::string type, Page &page, Configuration &conf
     , fontInst_(font)
     , timeFormat_(timeFormat)
     , textFormat_(textFormat)
+    , separator_(separator)
     , singlePrefix_(singlePrefix)
     , singlePostfix_(singlePostfix)
     , pluralPrefix_(pluralPrefix)
@@ -115,6 +116,125 @@ void ReloadableText::ReloadTexture()
     {
         std::stringstream ss;
         std::string text = "";
+        // Optional multi-field metadata, configured entirely by the layout.
+        // Single-field reloadableText behaviour remains unchanged.
+        if (type_.find(",") != std::string::npos)
+        {
+            std::stringstream fields(type_);
+            std::string field;
+            std::string combined;
+
+            bool overwriteXML = false;
+            config_.getProperty("overwriteXML", overwriteXML);
+
+            while (std::getline(fields, field, ','))
+            {
+                const std::string::size_type first =
+                    field.find_first_not_of(" \t\r\n");
+
+                if (first == std::string::npos)
+                {
+                    continue;
+                }
+
+                const std::string::size_type last =
+                    field.find_last_not_of(" \t\r\n");
+
+                field = field.substr(first, last - first + 1);
+
+                std::string value;
+
+                if (field == "year")
+                    value = selectedItem->year;
+                else if (field == "genre")
+                    value = selectedItem->genre;
+                else if (field == "manufacturer")
+                    value = selectedItem->manufacturer;
+                else if (field == "developer")
+                {
+                    value = selectedItem->developer;
+                    if (value.empty())
+                        value = selectedItem->manufacturer;
+                }
+                else if (field == "title")
+                    value = selectedItem->title;
+                else if (field == "numberPlayers")
+                    value = selectedItem->numberPlayers;
+                else if (field == "numberButtons")
+                    value = selectedItem->numberButtons;
+                else if (field == "rating")
+                    value = selectedItem->rating;
+                else if (field == "score")
+                    value = selectedItem->score;
+
+                // Preserve the existing collection configuration lookups.
+                if (!selectedItem->leaf || systemMode_)
+                {
+                    config_.getProperty(
+                        "collections." + selectedItem->name + "." + field,
+                        value);
+                }
+
+                if (systemMode_)
+                {
+                    value.clear();
+                    config_.getProperty(
+                        "collections." + page.getCollectionName() + "." + field,
+                        value);
+                }
+
+                // Preserve the existing XML metadata fallback behaviour.
+                if (value.empty() || overwriteXML)
+                {
+                    std::string xmlValue;
+                    selectedItem->getInfo(field, xmlValue);
+
+                    if (!xmlValue.empty())
+                        value = xmlValue;
+                }
+
+                // Ignore empty or whitespace-only metadata.
+                const std::string::size_type valueFirst =
+                    value.find_first_not_of(" \t\r\n");
+
+                if (valueFirst == std::string::npos)
+                    continue;
+
+                const std::string::size_type valueLast =
+                    value.find_last_not_of(" \t\r\n");
+
+                value = value.substr(
+                    valueFirst, valueLast - valueFirst + 1);
+
+                if (!combined.empty())
+                    combined += separator_;
+
+                combined += value;
+            }
+
+            if (!combined.empty())
+            {
+                if (textFormat_ == "uppercase")
+                {
+                    std::transform(
+                        combined.begin(), combined.end(),
+                        combined.begin(), ::toupper);
+                }
+                else if (textFormat_ == "lowercase")
+                {
+                    std::transform(
+                        combined.begin(), combined.end(),
+                        combined.begin(), ::tolower);
+                }
+
+                ss << pluralPrefix_ << combined << pluralPostfix_;
+            }
+
+            imageInst_ = new Text(
+                ss.str(), page, fontInst_, baseViewInfo.Monitor);
+
+            return;
+        }
         if (type_ == "time")
         {
           time_t    now = time(0);

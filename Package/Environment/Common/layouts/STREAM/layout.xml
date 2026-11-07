@@ -1,27 +1,101 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layout width="1920" height="1080" font="fonts/OpenSans.ttf" loadFontSize="36" fontColor="ffffff" independentRails="true" visibleRails="2" loopRails="true">
-  <!-- STREAM: automatically create one horizontal rail per Main collection -->
-  <menu menuIndex="0" repeatFor="collections" type="rail" imageType="fanart" orientation="horizontal" textFallback="true" scrollTime=".2" scrollAcceleration=".02" minScrollTime=".1" x="0" y="650" width="center" railSpacing="230" inactiveAlpha=".45">
-    <railTitle x="100" y="530" fontSize="36" fontColor="ffffff" layer="14" />
-    <onRailEnter>
-      <set duration=".2">
-        <animate type="alpha" to="1" />
-      </set>
-    </onRailEnter>
-    <onRailExit>
-      <set duration=".2">
-        <animate type="alpha" to=".45" />
-      </set>
-    </onRailExit>
-    <itemDefaults alpha="1" x="center" y="650" width="230" maxHeight="190" xOrigin="center" yOrigin="center" layer="12" />
-    <item xOffset="-1020" alpha="0" />
-    <item xOffset="-760" selected="true" width="270" maxHeight="215" layer="13" />
-    <item xOffset="-500" />
-    <item xOffset="-240" />
-    <item xOffset="20" />
-    <item xOffset="280" />
-    <item xOffset="540" />
-    <item xOffset="800" />
-    <item xOffset="1060" alpha="0" />
-  </menu>
+<layout width="1920" height="1080" font="fonts/OpenSans.ttf" loadFontSize="36" fontColor="ffffff" independentRails="true" visibleRails="2" loopRails="true" categoryNavigation="true">
+  <categoryBar x="100" y="5" spacing="45" layer="19" underlineLayer="18" underlineOffset="48" underlineHeight="4" font="fonts/OpenSans.ttf" loadFontSize="30" fontSize="30" fontColor="ffffff" alpha="1">
+    <background x="0" y="0" width="1920" height="50" xOrigin="left" yOrigin="top" backgroundColor="000000" backgroundAlpha="0.85" layer="17" />
+    <selected font="fonts/OpenSans.ttf" loadFontSize="30" fontSize="30" fontColor="ffffff" />
+    <inactive font="fonts/OpenSans.ttf" loadFontSize="30" fontSize="30" fontColor="999999" />
+    <underline backgroundColor="ffffff" backgroundAlpha="1" layer="18" />
+  </categoryBar>
+
+	<!-- STREAM: automatically create one horizontal rail per Main collection -->
+	<reloadableImage type="fanart" alpha="1" x="center" y="0" xOrigin="center" yOrigin="top" layer="1" width="stretch" />
+
+	<reloadableVideo type="video" imageType="screenshot" menuScrollReload="true" startDelay="2" alpha="0" volume="0" x="1370" y="355" width="1067" maxHeight="560" xOrigin="center" yOrigin="center" layer="2">
+		<onMenuScroll>
+			<set duration=".0001">
+				<animate type="alpha" to="0" />
+			</set>
+		</onMenuScroll>
+		<onMenuIdle>
+			<set duration="2">
+				<animate type="nop" />
+			</set>
+			<set duration=".2">
+				<animate type="volume" to="1"/>
+				<animate type="alpha" to="1" />
+			</set>
+		</onMenuIdle>
+		<onRailEnter>
+			<set duration=".0001">
+				<animate type="alpha" to="0" />
+			</set>
+			<set duration="2">
+				<animate type="nop" />
+			</set>
+			<set duration=".2">
+				<animate type="alpha" to="1" />
+			</set>
+		</onRailEnter>
+	</reloadableVideo>
+
+	<reloadableImage type="bezel_day" alpha="0" x="1370" y="355" width="1067" maxHeight="560" xOrigin="center" yOrigin="center" layer="3">
+		<onMenuScroll>
+			<set duration=".0001">
+				<animate type="alpha" to="0" />
+			</set>
+		</onMenuScroll>
+		<onMenuIdle>
+			<set duration="2">
+				<animate type="nop" />
+			</set>
+			<set duration=".2">
+				<animate type="alpha" to="1" />
+			</set>
+		</onMenuIdle>
+		<onRailEnter>
+			<set duration=".0001">
+				<animate type="alpha" to="0" />
+			</set>
+			<set duration="2">
+				<animate type="nop" />
+			</set>
+			<set duration=".2">
+				<animate type="alpha" to="1" />
+			</set>
+		</onRailEnter>
+	</reloadableImage>
+
+	<image src="images/bottom_gradient.png" alpha="1" x="0" y="0" xOrigin="left" yOrigin="top" layer="2" />
+
+	<image src="images/left_gradient.png" alpha="1" x="0" y="0" xOrigin="left" yOrigin="top" layer="4" />
+
+	<reloadableImage type="logo" alpha="1" x="100" y="300" maxWidth="550" maxHeight="230" xOrigin="left" yOrigin="bottom" layer="10" />
+
+	<reloadableText type="year,genre,manufacturer,score,players" separator=", " alpha="1" x="100" y="360" maxWidth="900" xOrigin="left" yOrigin="top" fontSize="30" loadFontSize="30" fontColor="ffffff" layer="11" />
+
+	<reloadableScrollingText type="story" alpha="1" x="100" y="400" width="850" height="225" xOrigin="left" yOrigin="top" fontSize="32" loadFontSize="32" fontColor="f2f2f2" direction="vertical" alignment="justified" scrollingSpeed="15" startPosition="0" startTime="4" endTime="1" layer="11" />
+
+	<menu menuIndex="0" repeatFor="collections" type="rail" imageType="fanart" orientation="horizontal" textFallback="true" scrollTime=".2" scrollAcceleration=".02" minScrollTime=".1" x="0" y="750" width="center" railSpacing="230" inactiveAlpha=".45">
+		<railTitle x="100" y="630" fontSize="36" fontColor="ffffff" layer="14" />
+		<onRailEnter>
+			<set duration=".2">
+				<animate type="alpha" to="1" />
+			</set>
+		</onRailEnter>
+		<onRailExit>
+			<set duration=".2">
+				<animate type="alpha" to=".45" />
+			</set>
+		</onRailExit>
+		<itemDefaults alpha="1" x="center" y="750" width="230" maxHeight="190" xOrigin="center" yOrigin="center" layer="12" />
+		<item xOffset="-1020" alpha="0" />
+		<item xOffset="-760" selected="true" width="270" maxHeight="215" layer="13" />
+		<item xOffset="-500" />
+		<item xOffset="-240" />
+		<item xOffset="20" />
+		<item xOffset="280" />
+		<item xOffset="540" />
+		<item xOffset="800" />
+		<item xOffset="1060" alpha="0" />
+	</menu>
 </layout>

@@ -188,6 +188,10 @@ void RetroFE::launchEnter( )
     SDL_SetWindowGrab(SDL::getWindow( 0 ), SDL_FALSE);
 
     // Free the textures, and optionally take down SDL
+    // STREAM: discard inactive category pages before graphics shutdown.
+    // They will be rebuilt on demand after returning from a game.
+    clearCategoryPageCache();
+
     freeGraphicsMemory( );
 
     bool hideMouse = false;
@@ -287,6 +291,93 @@ void RetroFE::allocateGraphicsMemory( )
 }
 
 
+void RetroFE::destroyCachedCategoryPage(Page *page)
+{
+    if (!page)
+        return;
+
+    bool unloadSDL = false;
+    config_.getProperty("unloadSDL", unloadSDL);
+
+    if (unloadSDL)
+        page->deInitializeFonts();
+
+    page->freeGraphicsMemory();
+    page->deInitialize();
+    delete page;
+}
+
+void RetroFE::cacheCategoryPage(const std::string &name, Page *page)
+{
+    if (!page)
+        return;
+
+    page->suspendVideos();
+
+    // A category must never have two cached owners.
+    for (auto it = categoryPageCache_.begin();
+         it != categoryPageCache_.end(); )
+    {
+        if (it->name == name)
+        {
+            if (it->page != page && it->page)
+            {
+                destroyCachedCategoryPage(it->page);
+            }
+
+            it = categoryPageCache_.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+
+    CategoryPageCacheEntry entry;
+    entry.name = name;
+    entry.page = page;
+    categoryPageCache_.push_back(entry);
+
+    // Oldest entry is at the front.
+    while (categoryPageCache_.size() > CATEGORY_PAGE_CACHE_LIMIT)
+    {
+        Page *oldest = categoryPageCache_.front().page;
+        categoryPageCache_.erase(categoryPageCache_.begin());
+
+        if (oldest)
+        {
+            destroyCachedCategoryPage(oldest);
+        }
+    }
+}
+Page *RetroFE::takeCachedCategoryPage(const std::string &name)
+{
+    for (auto it = categoryPageCache_.begin();
+         it != categoryPageCache_.end(); ++it)
+    {
+        if (it->name == name)
+        {
+            Page *page = it->page;
+            categoryPageCache_.erase(it);
+            return page;
+        }
+    }
+
+    return nullptr;
+}
+void RetroFE::clearCategoryPageCache()
+{
+    for (auto &entry : categoryPageCache_)
+    {
+        if (entry.page)
+        {
+            destroyCachedCategoryPage(entry.page);
+        }
+    }
+
+    categoryPageCache_.clear();
+}
+
 // Deinitialize RetroFE
 bool RetroFE::deInitialize( )
 {
@@ -294,6 +385,8 @@ bool RetroFE::deInitialize( )
     bool retVal = true;
 
     // Free textures
+    // Release inactive STREAM category pages before graphics shutdown.
+    clearCategoryPageCache();
     freeGraphicsMemory( );
 
     // Delete page
@@ -303,6 +396,9 @@ bool RetroFE::deInitialize( )
         delete currentPage_;
         currentPage_ = NULL;
     }
+
+
+
 
     // Delete the collections cached for the search overlay
     for ( std::map<std::string, CollectionInfo *>::iterator it = searchCollections_.begin( ); it != searchCollections_.end( ); ++it )
@@ -623,38 +719,31 @@ bool RetroFE::run( )
                     if (currentPage_->getPlaylistName() != firstPlaylist_ )
                         currentPage_->selectPlaylist( "all" );
 
-                    // STREAM: load collections requested by independent rails.
+                    // STREAM: load independent rail collections on demand.
                     if (currentPage_->isIndependentRails())
                     {
-                        const std::vector<std::string> railNames =
-                            currentPage_->getRequestedRailCollections();
-
-                        for (const std::string &railName : railNames)
-                        {
-                            if (railName == info->name)
-                                continue;
-
-                            const std::string railPath = Utils::combinePath(
-                                Configuration::absolutePath, "collections", railName);
-
-                            struct stat railStat;
-                            if (stat(railPath.c_str(), &railStat) != 0 ||
-                                (railStat.st_mode & S_IFMT) != S_IFDIR)
+                        currentPage_->setRailCollectionLoader(
+                            [this](const std::string &railName) -> CollectionInfo *
                             {
-                                Logger::write(Logger::ZONE_ERROR, "RetroFE",
-                                    "STREAM rail collection directory missing: " + railName);
-                                continue;
-                            }
+                                const std::string railPath = Utils::combinePath(
+                                    Configuration::absolutePath,
+                                    "collections",
+                                    railName);
 
-                            CollectionInfo *railCollection = getCollection(railName);
-                            if (railCollection &&
-                                !currentPage_->registerRailCollection(railCollection))
-                            {
-                                delete railCollection;
-                            }
-                        }
+                                struct stat railStat;
+                                if (stat(railPath.c_str(), &railStat) != 0 ||
+                                    (railStat.st_mode & S_IFMT) != S_IFDIR)
+                                {
+                                    Logger::write(Logger::ZONE_ERROR, "RetroFE",
+                                        "STREAM rail collection directory missing: " +
+                                        railName);
+                                    return nullptr;
+                                }
 
-                        currentPage_->bindRailCollections();
+                                return getCollection(railName);
+                            });
+
+                        currentPage_->prepareVisibleRailCollections();
                     }
                     currentPage_->onNewItemSelected( );
                     currentPage_->reallocateMenuSpritePoints( );
@@ -825,7 +914,37 @@ bool RetroFE::run( )
 
                 const std::string categoryName = categoryNames_[nextIndex];
 
+                const Uint32 streamPerfStart = SDL_GetTicks();
+                // STREAM: reuse a previously visited category page.
+                Page *cachedPage = takeCachedCategoryPage(categoryName);
+
+                if (cachedPage)
+                {
+                    const std::string outgoingCategory =
+                        categoryNames_[categoryIndex_];
+
+                    Page *outgoingPage = currentPage_;
+
+                    currentPage_ = cachedPage;
+                    categoryIndex_ = nextIndex;
+                    categorySwitchDirection_ = 0;
+
+                    cacheCategoryPage(outgoingCategory, outgoingPage);
+
+                    currentPage_->resumeVideos();
+
+                    config_.setProperty("currentCollection", categoryName);
+
+                    Logger::write(Logger::ZONE_INFO, "STREAM_PERF",
+                        "STREAM_PERF category=" + categoryName +
+                        " cache=hit total_ms=" +
+                        std::to_string(SDL_GetTicks() - streamPerfStart));
+
+                    state = RETROFE_CATEGORY_SWITCH_LOAD_ART;
+                    break;
+                }
                 CollectionInfo *categoryInfo = getCollection(categoryName);
+                const Uint32 streamPerfCollection = SDL_GetTicks();
 
                 if (!categoryInfo)
                 {
@@ -835,6 +954,7 @@ bool RetroFE::run( )
                 }
 
                 Page *newPage = loadPage(categoryInfo);
+                const Uint32 streamPerfPage = SDL_GetTicks();
 
                 if (!newPage)
                 {
@@ -850,49 +970,54 @@ bool RetroFE::run( )
                 newPage->pushCollection(categoryInfo);
                 newPage->selectPlaylist("all");
 
+                // STREAM: load category rail collections on demand.
                 if (newPage->isIndependentRails())
                 {
-                    const std::vector<std::string> railNames =
-                        newPage->getRequestedRailCollections();
-
-                    for (const std::string &railName : railNames)
-                    {
-                        if (railName == categoryInfo->name)
-                            continue;
-
-                        const std::string railPath = Utils::combinePath(
-                            Configuration::absolutePath,
-                            "collections",
-                            railName);
-
-                        struct stat railStat;
-
-                        if (stat(railPath.c_str(), &railStat) != 0 ||
-                            (railStat.st_mode & S_IFMT) != S_IFDIR)
+                    newPage->setRailCollectionLoader(
+                        [this](const std::string &railName) -> CollectionInfo *
                         {
-                            Logger::write(Logger::ZONE_ERROR, "RetroFE",
-                                "STREAM category rail directory missing: " +
+                            const std::string railPath = Utils::combinePath(
+                                Configuration::absolutePath,
+                                "collections",
                                 railName);
-                            continue;
-                        }
 
-                        CollectionInfo *railCollection = getCollection(railName);
+                            struct stat railStat;
+                            if (stat(railPath.c_str(), &railStat) != 0 ||
+                                (railStat.st_mode & S_IFMT) != S_IFDIR)
+                            {
+                                Logger::write(Logger::ZONE_ERROR, "RetroFE",
+                                    "STREAM category rail directory missing: " +
+                                    railName);
+                                return nullptr;
+                            }
 
-                        if (railCollection &&
-                            !newPage->registerRailCollection(railCollection))
-                        {
-                            delete railCollection;
-                        }
-                    }
+                            return getCollection(railName);
+                        });
 
-                    newPage->bindRailCollections();
+                    newPage->prepareVisibleRailCollections();
                 }
-
+                const Uint32 streamPerfRails = SDL_GetTicks();
                 newPage->onNewItemSelected();
+                const Uint32 streamPerfSelection = SDL_GetTicks();
                 newPage->reallocateMenuSpritePoints();
+                const Uint32 streamPerfArtwork = SDL_GetTicks();
 
-                currentPage_->deInitialize();
-                delete currentPage_;
+                const std::string outgoingCategory =
+                    categoryNames_[categoryIndex_];
+
+                cacheCategoryPage(outgoingCategory, currentPage_);
+                const Uint32 streamPerfCleanup = SDL_GetTicks();
+
+                Logger::write(Logger::ZONE_INFO, "STREAM_PERF",
+                    "STREAM_PERF category=" + categoryName +
+                    " collection_ms=" + std::to_string(streamPerfCollection - streamPerfStart) +
+                    " page_ms=" + std::to_string(streamPerfPage - streamPerfCollection) +
+                    " rails_ms=" + std::to_string(streamPerfRails - streamPerfPage) +
+                    " selection_ms=" + std::to_string(streamPerfSelection - streamPerfRails) +
+                    " sprites_ms=" + std::to_string(streamPerfArtwork - streamPerfSelection) +
+                    " artwork_ms=" + std::to_string(streamPerfArtwork - streamPerfRails) +
+                    " cleanup_ms=" + std::to_string(streamPerfCleanup - streamPerfArtwork) +
+                    " total_ms=" + std::to_string(streamPerfCleanup - streamPerfStart));
 
                 currentPage_ = newPage;
                 categoryIndex_ = nextIndex;

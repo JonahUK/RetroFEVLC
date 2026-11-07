@@ -29,6 +29,8 @@ public:
     virtual ~VideoComponent();
     void update(float dt);
     void draw();
+    void suspendVideo();
+    void resumeVideo();
     void freeGraphicsMemory();
     void allocateGraphicsMemory();
     virtual bool isPlaying();
@@ -47,4 +49,5 @@ private:
     std::string name_;
     IVideo *videoInst_;
     bool isPlaying_;
+    bool suspendedForCache_ = false;
 };

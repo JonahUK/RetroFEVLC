@@ -27,15 +27,18 @@ class Image;
 class ReloadableMedia : public Component
 {
 public:
-    ReloadableMedia(Configuration &config, bool systemMode, bool layoutMode, bool commonMode, bool menuMode, std::string type, std::string imageType, Page &page, int displayOffset, bool isVideo, Font *font, bool jukebox, int jukeboxNumLoops);
+    ReloadableMedia(Configuration &config, bool systemMode, bool layoutMode, bool commonMode, bool menuMode, std::string type, std::string imageType, Page &page, int displayOffset, bool isVideo, Font *font, bool jukebox, int jukeboxNumLoops, float startDelay = 0.0f);
     virtual ~ReloadableMedia();
     void update(float dt);
     void draw();
+    void suspendVideo();
+    void resumeVideo();
     void freeGraphicsMemory();
     void allocateGraphicsMemory();
     Component *findComponent(std::string collection, std::string type, std::string basename, std::string filepath, bool systemMode, bool isVideo);
 
     void enableTextFallback_(bool value);
+    void setStartDelay(float seconds);
     virtual bool isJukeboxPlaying();
     virtual void skipForward( );
     virtual void skipBackward( );
@@ -58,6 +61,9 @@ private:
     Component *loadedComponent_;
     IVideo *videoInst_;
     bool isVideo_;
+    float startDelay_;
+    float remainingStartDelay_;
+    bool pendingVideoStart_;
     Font *FfntInst_;
     bool textFallback_;
     std::string type_;

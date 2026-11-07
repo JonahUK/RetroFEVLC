@@ -14,12 +14,14 @@
  * along with RetroFE.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Image.h"
+#include "ImageDecodeCache.h"
 #include "../ViewInfo.h"
 #include "../../SDL.h"
 #include "../../Utility/Log.h"
 #include <SDL2/SDL_image.h>
 #include <sstream>
 #include <algorithm>
+#include <chrono>
 #include <cctype>
 
 Image::Image(std::string file, std::string altFile, Page &p, int monitor)
@@ -58,11 +60,13 @@ void Image::allocateGraphicsMemory()
     if(!texture_)
     {
         SDL_LockMutex(SDL::getMutex());
-        texture_ = IMG_LoadTexture(SDL::getRenderer(baseViewInfo.Monitor), file_.c_str());
-        if (!texture_ && altFile_ != "")
-        {
-            texture_ = IMG_LoadTexture(SDL::getRenderer(baseViewInfo.Monitor), altFile_.c_str());
-        }
+        static unsigned long long streamImageLoads = 0;
+        static unsigned long long streamImageHits = 0;
+        static unsigned long long streamImageLoadUs = 0;
+
+        const auto streamImageStart = std::chrono::steady_clock::now();
+
+        texture_ = loadTexture();
 
         if (texture_ != NULL)
         {
@@ -73,12 +77,69 @@ void Image::allocateGraphicsMemory()
         }
         SDL_UnlockMutex(SDL::getMutex());
 
+        const auto streamImageEnd = std::chrono::steady_clock::now();
+
+        ++streamImageLoads;
+
+        if (texture_)
+            ++streamImageHits;
+
+        streamImageLoadUs += static_cast<unsigned long long>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                streamImageEnd - streamImageStart).count());
+
+        if (streamImageLoads % 25 == 0)
+        {
+            Logger::write(Logger::ZONE_INFO, "STREAM_PERF",
+                "STREAM_PERF image_load" +
+                std::string(" loads=") + std::to_string(streamImageLoads) +
+                " hits=" + std::to_string(streamImageHits) +
+                " total_ms=" + std::to_string(streamImageLoadUs / 1000));
+        }
+
     }
 
     Component::allocateGraphicsMemory();
 
 }
 
+
+SDL_Texture *Image::loadTexture()
+{
+    SDL_Renderer *renderer = SDL::getRenderer(baseViewInfo.Monitor);
+    ImageDecodeCache &cache = ImageDecodeCache::instance();
+
+    // Use an image decoded by the background worker, if ready.
+    SDL_Surface *surface = cache.take(file_);
+
+    if (surface)
+    {
+        SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
+        SDL_FreeSurface(surface);
+
+        if (texture)
+            return texture;
+    }
+
+    // Preserve the original synchronous loading behaviour on a cache miss.
+    SDL_Texture *texture = IMG_LoadTexture(renderer, file_.c_str());
+
+    if (!texture && !altFile_.empty())
+    {
+        surface = cache.take(altFile_);
+
+        if (surface)
+        {
+            texture = SDL_CreateTextureFromSurface(renderer, surface);
+            SDL_FreeSurface(surface);
+        }
+
+        if (!texture)
+            texture = IMG_LoadTexture(renderer, altFile_.c_str());
+    }
+
+    return texture;
+}
 
 void Image::draw()
 {

@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <sstream>
 #include <fstream>
+#include <chrono>
 #include <dirent.h>
 #include <locale>
 #include <list>
@@ -131,21 +132,52 @@ std::string Utils::combinePath(std::string path1, std::string path2, std::string
 
 bool Utils::findMatchingFile(std::string prefix, std::vector<std::string> &extensions, std::string &file)
 {
+    static unsigned long long streamLookups = 0;
+    static unsigned long long streamChecks = 0;
+    static unsigned long long streamHits = 0;
+    static unsigned long long streamLookupUs = 0;
+
+    const auto streamStart = std::chrono::steady_clock::now();
+    bool streamFound = false;
+
     for(unsigned int i = 0; i < extensions.size(); ++i)
     {
         std::string temp = prefix + "." + extensions[i];
         temp = Configuration::convertToAbsolutePath(Configuration::absolutePath, temp);
 
+        ++streamChecks;
         std::ifstream f(temp.c_str());
 
         if (f.good())
         {
             file = temp;
-            return true;
+            streamFound = true;
+            break;
         }
     }
 
-    return false;
+    ++streamLookups;
+
+    if (streamFound)
+        ++streamHits;
+
+    const auto streamEnd = std::chrono::steady_clock::now();
+
+    streamLookupUs += static_cast<unsigned long long>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            streamEnd - streamStart).count());
+
+    if (streamLookups % 500 == 0)
+    {
+        Logger::write(Logger::ZONE_INFO, "STREAM_PERF",
+            "STREAM_PERF file_lookup" +
+            std::string(" lookups=") + std::to_string(streamLookups) +
+            " checks=" + std::to_string(streamChecks) +
+            " hits=" + std::to_string(streamHits) +
+            " total_ms=" + std::to_string(streamLookupUs / 1000));
+    }
+
+    return streamFound;
 }
 
 

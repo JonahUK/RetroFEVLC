@@ -15,6 +15,7 @@
  */
 
 #include "ReloadableMedia.h"
+#include "VideoComponent.h"
 #include "ImageBuilder.h"
 #include "VideoBuilder.h"
 #include "ReloadableText.h"
@@ -28,7 +29,7 @@
 #include <vector>
 #include <iostream>
 
-ReloadableMedia::ReloadableMedia(Configuration &config, bool systemMode, bool layoutMode, bool commonMode, bool menuMode, std::string type, std::string imageType, Page &p, int displayOffset, bool isVideo, Font *font, bool jukebox, int jukeboxNumLoops)
+ReloadableMedia::ReloadableMedia(Configuration &config, bool systemMode, bool layoutMode, bool commonMode, bool menuMode, std::string type, std::string imageType, Page &p, int displayOffset, bool isVideo, Font *font, bool jukebox, int jukeboxNumLoops, float startDelay)
     : Component(p)
     , config_(config)
     , systemMode_(systemMode)
@@ -38,6 +39,9 @@ ReloadableMedia::ReloadableMedia(Configuration &config, bool systemMode, bool la
     , loadedComponent_(NULL)
     , videoInst_(NULL)
     , isVideo_(isVideo)
+    , startDelay_(startDelay > 0.0f ? startDelay : 0.0f)
+    , remainingStartDelay_(0.0f)
+    , pendingVideoStart_(false)
     , FfntInst_(font)
     , textFallback_(false)
     , type_(type)
@@ -62,6 +66,11 @@ void ReloadableMedia::enableTextFallback_(bool value)
     textFallback_ = value;
 }
 
+void ReloadableMedia::setStartDelay(float seconds)
+{
+    startDelay_ = seconds > 0.0f ? seconds : 0.0f;
+}
+
 void ReloadableMedia::update(float dt)
 {
     if (newItemSelected ||
@@ -72,6 +81,22 @@ void ReloadableMedia::update(float dt)
         reloadTexture();
         newItemSelected       = false;
         newScrollItemSelected = false;
+    }
+
+    if (pendingVideoStart_)
+    {
+        remainingStartDelay_ -= dt;
+
+        if (remainingStartDelay_ <= 0.0f)
+        {
+            pendingVideoStart_ = false;
+            remainingStartDelay_ = 0.0f;
+
+            if (loadedComponent_)
+            {
+                loadedComponent_->allocateGraphicsMemory();
+            }
+        }
     }
 
     if(loadedComponent_)
@@ -94,7 +119,7 @@ void ReloadableMedia::update(float dt)
 
 void ReloadableMedia::allocateGraphicsMemory()
 {
-    if(loadedComponent_)
+    if(loadedComponent_ && !pendingVideoStart_)
     {
         loadedComponent_->allocateGraphicsMemory();
     }
@@ -104,8 +129,29 @@ void ReloadableMedia::allocateGraphicsMemory()
 }
 
 
+void ReloadableMedia::suspendVideo()
+{
+    VideoComponent *video = dynamic_cast<VideoComponent *>(loadedComponent_);
+
+    if (video)
+    {
+        video->suspendVideo();
+    }
+}
+void ReloadableMedia::resumeVideo()
+{
+    VideoComponent *video = dynamic_cast<VideoComponent *>(loadedComponent_);
+
+    if (video)
+    {
+        video->resumeVideo();
+    }
+}
 void ReloadableMedia::freeGraphicsMemory()
 {
+    pendingVideoStart_ = false;
+    remainingStartDelay_ = 0.0f;
+
     Component::freeGraphicsMemory();
 
     if(loadedComponent_)
@@ -117,6 +163,9 @@ void ReloadableMedia::freeGraphicsMemory()
 
 void ReloadableMedia::reloadTexture()
 {
+    pendingVideoStart_ = false;
+    remainingStartDelay_ = 0.0f;
+
     if(loadedComponent_)
     {
         delete loadedComponent_;
@@ -229,7 +278,16 @@ void ReloadableMedia::reloadTexture()
 
             if(loadedComponent_)
             {
-                loadedComponent_->allocateGraphicsMemory();
+                if (startDelay_ > 0.0f && !jukebox_)
+                {
+                    remainingStartDelay_ = startDelay_;
+                    pendingVideoStart_ = true;
+                }
+                else
+                {
+                    loadedComponent_->allocateGraphicsMemory();
+                }
+
                 baseViewInfo.ImageWidth = loadedComponent_->baseViewInfo.ImageWidth;
                 baseViewInfo.ImageHeight = loadedComponent_->baseViewInfo.ImageHeight;
             }
@@ -485,7 +543,7 @@ void ReloadableMedia::draw()
 {
     Component::draw();
 
-    if(loadedComponent_)
+    if(loadedComponent_ && !pendingVideoStart_)
     {
     	baseViewInfo.ImageHeight = loadedComponent_->baseViewInfo.ImageHeight;
     	baseViewInfo.ImageWidth = loadedComponent_->baseViewInfo.ImageWidth;

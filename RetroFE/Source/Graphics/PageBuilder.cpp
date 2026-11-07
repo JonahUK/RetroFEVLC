@@ -979,7 +979,16 @@ void PageBuilder::loadReloadableImages(xml_node<> *layout, std::string tagName, 
                 typeString = type->value();
             if ( imageType )
                 imageTypeString = imageType->value();
-            c = new ReloadableMedia(config_, systemMode, layoutMode, commonMode, menuMode, typeString, imageTypeString, *page, selectedOffset, (tagName == "reloadableVideo") || (tagName == "reloadableAudio"), font, jukebox, jukeboxNumLoops);
+            float startDelay = 0.0f;
+            if (tagName == "reloadableVideo")
+            {
+                xml_attribute<> *startDelayXml = componentXml->first_attribute("startDelay");
+                if (startDelayXml)
+                {
+                    startDelay = Utils::convertFloat(startDelayXml->value());
+                }
+            }
+            c = new ReloadableMedia(config_, systemMode, layoutMode, commonMode, menuMode, typeString, imageTypeString, *page, selectedOffset, (tagName == "reloadableVideo") || (tagName == "reloadableAudio"), font, jukebox, jukeboxNumLoops, startDelay);
             c->setId( id );
             xml_attribute<> *menuScrollReload = componentXml->first_attribute("menuScrollReload");
             if (menuScrollReload &&

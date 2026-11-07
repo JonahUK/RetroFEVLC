@@ -21,9 +21,8 @@
 #include <fstream>
 
 
-VideoComponent * VideoBuilder::createVideo(std::string path, Page &page, std::string name, int monitor, bool isTypeVideo, int numLoops)
+bool VideoBuilder::FindVideoFile(std::string path, std::string name, std::string &file)
 {
-    VideoComponent *component = NULL;
     std::vector<std::string> extensions;
 
     extensions.push_back("mp4");
@@ -40,9 +39,15 @@ VideoComponent * VideoBuilder::createVideo(std::string path, Page &page, std::st
     extensions.push_back("FLAC");
 
     std::string prefix = Utils::combinePath(path, name);
+    return Utils::findMatchingFile(prefix, extensions, file);
+}
+
+VideoComponent * VideoBuilder::createVideo(std::string path, Page &page, std::string name, int monitor, bool isTypeVideo, int numLoops)
+{
+    VideoComponent *component = NULL;
     std::string file;
 
-    if(Utils::findMatchingFile(prefix, extensions, file))
+    if(FindVideoFile(path, name, file))
     {
         IVideo *video = factory_.createVideo( monitor, isTypeVideo, numLoops );
 

@@ -117,6 +117,10 @@ private:
     bool            back( bool &exit );
     void            quit( );
     Page           *loadPage( CollectionInfo *railSource = NULL );
+    void            cacheCategoryPage(const std::string &name, Page *page);
+    Page           *takeCachedCategoryPage(const std::string &name);
+    void            clearCategoryPageCache( );
+    void            destroyCachedCategoryPage(Page *page);
     Page           *loadSplashPage( );
     RETROFE_STATE   processUserInput( Page *page );
     RETROFE_STATE   runSearch( Page *page );
@@ -134,6 +138,17 @@ private:
     UserInput          input_;
     Page              *currentPage_;
     std::stack<Page *> pages_;
+    // STREAM: bounded cache of inactive category pages.
+    // Entries are ordered oldest first, newest last.
+    struct CategoryPageCacheEntry
+    {
+        std::string name;
+        Page *page;
+    };
+
+    std::vector<CategoryPageCacheEntry> categoryPageCache_;
+    static const unsigned int CATEGORY_PAGE_CACHE_LIMIT = 3;
+
     std::vector<std::string> categoryNames_;
     unsigned int categoryIndex_;
     bool categoryNavigationEnabled_;

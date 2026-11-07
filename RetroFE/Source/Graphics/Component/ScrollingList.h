@@ -63,7 +63,7 @@ public:
     void triggerAttractExitEvent( int menuIndex = -1 );
     void triggerJukeboxJumpEvent( int menuIndex = -1 );
 
-    bool allocateTexture( unsigned int index, Item *i );
+    bool allocateTexture( unsigned int index, Item *i, std::string *prefetchImagePath = nullptr );
     void deallocateTexture( unsigned int index );
     void setItems( std::vector<Item *> *items );
     std::vector<Item *> *getItems() const { return items_; }
@@ -108,6 +108,7 @@ public:
     void resetScrollPeriod( );
     void updateScrollPeriod( );
     void scroll( bool forward );
+    void prefetchNearbyImages( unsigned int ahead = 2 );
 
 private:
 
@@ -138,5 +139,13 @@ private:
     std::vector<Item *>     *items_;
     std::vector<Component *> components_;
     Text *railTitle_ = nullptr;
+
+    // Track the last prefetched collection and rail position.
+    std::vector<Item *> *prefetchedItems_ = nullptr;
+    unsigned int prefetchedIndex_ = 0;
+    bool hasPrefetchedPosition_ = false;
+
+    // True only while this rail has active graphics resources.
+    bool railGraphicsAllocated_ = false;
 
 };

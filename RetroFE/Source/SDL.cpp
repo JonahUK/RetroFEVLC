@@ -16,6 +16,7 @@
 
 
 #include "SDL.h"
+#include "Graphics/Component/ImageDecodeCache.h"
 #include "Database/Configuration.h"
 #include "Utility/Log.h"
 #include <SDL2/SDL_mixer.h>
@@ -251,6 +252,9 @@ bool SDL::initialize( Configuration &config )
         Logger::write( Logger::ZONE_WARNING, "SDL", "Audio initialize failed: " + error );
     }
 
+    // SDL is ready; background image decoding may accept requests again.
+    ImageDecodeCache::instance().resume();
+
     return true;
 
 }
@@ -259,6 +263,9 @@ bool SDL::initialize( Configuration &config )
 // Deinitialize SDL
 bool SDL::deInitialize( )
 {
+    // Finish background image decoding before SDL resources are destroyed.
+    ImageDecodeCache::instance().stop();
+
     std::string error = SDL_GetError( );
     Logger::write( Logger::ZONE_INFO, "SDL", "DeInitializing" );
 

@@ -23,6 +23,7 @@
 #include "../Animate/TweenTypes.h"
 #include "../Font.h"
 #include "ImageBuilder.h"
+#include "ImageDecodeCache.h"
 #include "VideoBuilder.h"
 #include "VideoComponent.h"
 #include "ReloadableMedia.h"
@@ -111,6 +112,9 @@ ScrollingList::~ScrollingList( )
 
 void ScrollingList::setItems( std::vector<Item *> *items )
 {
+    // A new collection must not inherit the previous prefetch position.
+    hasPrefetchedPosition_ = false;
+    prefetchedItems_ = nullptr;
     items_ = items;
     if ( items_ )
     {
@@ -153,6 +157,7 @@ void ScrollingList::setMinScrollTime( float value )
 
 void ScrollingList::deallocateSpritePoints( )
 {
+    railGraphicsAllocated_ = false;
     for ( unsigned int i = 0; i < components_.size( ); ++i )
     {
         deallocateTexture( i );
@@ -166,6 +171,11 @@ void ScrollingList::allocateSpritePoints( )
     if ( !scrollPoints_ ) return;
     if ( components_.size( ) == 0 ) return;
 
+    Uint32 streamTextureMs = 0;
+    Uint32 streamGraphicsMs = 0;
+    Uint32 streamTweenMs = 0;
+    const Uint32 streamTotalStart = SDL_GetTicks();
+
     for ( unsigned int i = 0; i < scrollPoints_->size( ); ++i )
     {
         unsigned int index  = loopIncrement( itemIndex_, i, items_->size( ) );
@@ -173,22 +183,41 @@ void ScrollingList::allocateSpritePoints( )
 
         Component *old = components_.at( i );
 
+        const Uint32 streamTextureStart = SDL_GetTicks();
         allocateTexture( i, item );
+        streamTextureMs += SDL_GetTicks() - streamTextureStart;
 
         Component *c = components_.at( i );
+
+        const Uint32 streamGraphicsStart = SDL_GetTicks();
         c->allocateGraphicsMemory( );
+        streamGraphicsMs += SDL_GetTicks() - streamGraphicsStart;
 
         ViewInfo *view = scrollPoints_->at( i );
 
+        const Uint32 streamTweenStart = SDL_GetTicks();
         resetTweens( c, tweenPoints_->at( i ), view, view, 0 );
+        streamTweenMs += SDL_GetTicks() - streamTweenStart;
 
         if ( old && !newItemSelected )
         {
             c->baseViewInfo = old->baseViewInfo;
             delete old;
         }
-
     }
+
+    const Uint32 streamTotalMs = SDL_GetTicks() - streamTotalStart;
+
+    // Artwork components have been allocated for this rail.
+    railGraphicsAllocated_ = true;
+
+    Logger::write(Logger::ZONE_INFO, "STREAM_PERF",
+        "STREAM_PERF sprite_list=" + layoutKey_ +
+        " points=" + std::to_string(scrollPoints_->size()) +
+        " texture_ms=" + std::to_string(streamTextureMs) +
+        " graphics_ms=" + std::to_string(streamGraphicsMs) +
+        " tween_ms=" + std::to_string(streamTweenMs) +
+        " total_ms=" + std::to_string(streamTotalMs));
 }
 
 
@@ -233,6 +262,9 @@ void ScrollingList::offsetVertical( float delta )
 
 void ScrollingList::setPoints( std::vector<ViewInfo *> *scrollPoints, std::vector<AnimationEvents *> *tweenPoints )
 {
+    // The visible artwork window may change with the layout points.
+    hasPrefetchedPosition_ = false;
+    prefetchedItems_ = nullptr;
     scrollPoints_ = scrollPoints;
     tweenPoints_  = tweenPoints;
 
@@ -507,6 +539,11 @@ void ScrollingList::allocateGraphicsMemory( )
 
 void ScrollingList::freeGraphicsMemory( )
 {
+    railGraphicsAllocated_ = false;
+
+    // Allow fresh prefetch requests after graphics resources are rebuilt.
+    hasPrefetchedPosition_ = false;
+    prefetchedItems_ = nullptr;
     Component::freeGraphicsMemory( );
     scrollPeriod_ = 0;
     
@@ -678,6 +715,11 @@ void ScrollingList::update( float dt )
     if (components_.size( ) == 0 ) return;
     if (!items_ ) return;
 
+    // Only active rails schedule nearby artwork for background decoding.
+    // The prefetch helper skips unchanged collection/position combinations.
+    if (railGraphicsAllocated_)
+        prefetchNearbyImages(2);
+
     for ( unsigned int i = 0; i < scrollPoints_->size( ); i++ )
     {
         Component *c = components_.at( i );
@@ -748,7 +790,7 @@ void ScrollingList::resetTweens( Component *c, AnimationEvents *sets, ViewInfo *
 }
 
 
-bool ScrollingList::allocateTexture( unsigned int index, Item *item )
+bool ScrollingList::allocateTexture( unsigned int index, Item *item, std::string *prefetchImagePath )
 {
 
     if ( index >= components_.size( ) ) return false;
@@ -760,6 +802,31 @@ bool ScrollingList::allocateTexture( unsigned int index, Item *item )
 
     ImageBuilder imageBuild;
     VideoBuilder videoBuild;
+
+    // Filename-only lookup for background image prefetching.
+    // This must not create SDL textures or graphics components.
+    auto findPrefetchImage = [&](const std::string &path, const std::string &name) -> bool
+    {
+        if (!prefetchImagePath)
+            return false;
+
+        std::string resolvedFile;
+        if (!imageBuild.FindImageFile(path, name, resolvedFile))
+            return false;
+
+        *prefetchImagePath = resolvedFile;
+        return true;
+    };
+
+    // Check video availability without constructing a video component.
+    auto findPrefetchVideo = [&](const std::string &path, const std::string &name) -> bool
+    {
+        if (!prefetchImagePath)
+            return false;
+
+        std::string resolvedFile;
+        return videoBuild.FindVideoFile(path, name, resolvedFile);
+    };
 
     std::string layoutName;
     config_.getProperty( "layout", layoutName );
@@ -834,11 +901,27 @@ bool ScrollingList::allocateTexture( unsigned int index, Item *item )
         {
             if ( videoType_ != "null" )
             {
-                t = videoBuild.createVideo( videoPath, page, names[n], baseViewInfo.Monitor, false );
+                if (prefetchImagePath)
+                {
+                    if (findPrefetchVideo(videoPath, names[n]))
+                        return false;
+                }
+                else
+                {
+                    t = videoBuild.createVideo( videoPath, page, names[n], baseViewInfo.Monitor, false );
+                }
             }
             else
             {
-                t = imageBuild.CreateImage( imagePath, page, names[n], baseViewInfo.Monitor );
+                if (prefetchImagePath)
+                {
+                    if (findPrefetchImage(imagePath, names[n]))
+                        return true;
+                }
+                else
+                {
+                    t = imageBuild.CreateImage( imagePath, page, names[n], baseViewInfo.Monitor );
+                }
             }
         }
 
@@ -858,11 +941,27 @@ bool ScrollingList::allocateTexture( unsigned int index, Item *item )
             }
             if ( videoType_ != "null" )
             {
-                t = videoBuild.createVideo( videoPath, page, names[n], baseViewInfo.Monitor, false );
+                if (prefetchImagePath)
+                {
+                    if (findPrefetchVideo(videoPath, names[n]))
+                        return false;
+                }
+                else
+                {
+                    t = videoBuild.createVideo( videoPath, page, names[n], baseViewInfo.Monitor, false );
+                }
             }
             else
             {
-                t = imageBuild.CreateImage( imagePath, page, names[n], baseViewInfo.Monitor );
+                if (prefetchImagePath)
+                {
+                    if (findPrefetchImage(imagePath, names[n]))
+                        return true;
+                }
+                else
+                {
+                    t = imageBuild.CreateImage( imagePath, page, names[n], baseViewInfo.Monitor );
+                }
             }
         }
     }
@@ -895,11 +994,27 @@ bool ScrollingList::allocateTexture( unsigned int index, Item *item )
         }
         if ( videoType_ != "null" )
         {
-            t = videoBuild.createVideo( videoPath, page, videoType_, baseViewInfo.Monitor, false );
+            if (prefetchImagePath)
+            {
+                if (findPrefetchVideo(videoPath, videoType_))
+                    return false;
+            }
+            else
+            {
+                t = videoBuild.createVideo( videoPath, page, videoType_, baseViewInfo.Monitor, false );
+            }
         }
         else
         {
-            t = imageBuild.CreateImage( imagePath, page, imageType_, baseViewInfo.Monitor );
+            if (prefetchImagePath)
+            {
+                if (findPrefetchImage(imagePath, imageType_))
+                    return true;
+            }
+            else
+            {
+                t = imageBuild.CreateImage( imagePath, page, imageType_, baseViewInfo.Monitor );
+            }
         }
     }
 
@@ -908,11 +1023,27 @@ bool ScrollingList::allocateTexture( unsigned int index, Item *item )
     {
         if ( videoType_ != "null" )
         {
-            t = videoBuild.createVideo( item->filepath, page, videoType_, baseViewInfo.Monitor, false );
+            if (prefetchImagePath)
+            {
+                if (findPrefetchVideo(item->filepath, videoType_))
+                    return false;
+            }
+            else
+            {
+                t = videoBuild.createVideo( item->filepath, page, videoType_, baseViewInfo.Monitor, false );
+            }
         }
         else
         {
-            t = imageBuild.CreateImage( item->filepath, page, imageType_, baseViewInfo.Monitor );
+            if (prefetchImagePath)
+            {
+                if (findPrefetchImage(item->filepath, imageType_))
+                    return true;
+            }
+            else
+            {
+                t = imageBuild.CreateImage( item->filepath, page, imageType_, baseViewInfo.Monitor );
+            }
         }
     }
 
@@ -943,7 +1074,15 @@ bool ScrollingList::allocateTexture( unsigned int index, Item *item )
                 }
             }
 
-            t = imageBuild.CreateImage( imagePath, page, names[n], baseViewInfo.Monitor );
+            if (prefetchImagePath)
+            {
+                if (findPrefetchImage(imagePath, names[n]))
+                    return true;
+            }
+            else
+            {
+                t = imageBuild.CreateImage( imagePath, page, names[n], baseViewInfo.Monitor );
+            }
 
             // check sub-collection path for art
             if ( !t && !commonMode_ )
@@ -957,7 +1096,15 @@ bool ScrollingList::allocateTexture( unsigned int index, Item *item )
                 {
                     config_.getMediaPropertyAbsolutePath( item->collectionInfo->name, imageType_, false, imagePath );
                 }
-                t = imageBuild.CreateImage( imagePath, page, names[n], baseViewInfo.Monitor );
+                if (prefetchImagePath)
+                {
+                    if (findPrefetchImage(imagePath, names[n]))
+                        return true;
+                }
+                else
+                {
+                    t = imageBuild.CreateImage( imagePath, page, names[n], baseViewInfo.Monitor );
+                }
             }
         }
 
@@ -986,16 +1133,36 @@ bool ScrollingList::allocateTexture( unsigned int index, Item *item )
             }
             if ( !t )
             {
-                t = imageBuild.CreateImage( imagePath, page, imageType_, baseViewInfo.Monitor );
+                if (prefetchImagePath)
+                {
+                    if (findPrefetchImage(imagePath, imageType_))
+                        return true;
+                }
+                else
+                {
+                    t = imageBuild.CreateImage( imagePath, page, imageType_, baseViewInfo.Monitor );
+                }
             }
         }
         // check rom directory path for art
         if ( !t )
         {
-            t = imageBuild.CreateImage( item->filepath, page, imageType_, baseViewInfo.Monitor );
+            if (prefetchImagePath)
+            {
+                if (findPrefetchImage(item->filepath, imageType_))
+                    return true;
+            }
+            else
+            {
+                t = imageBuild.CreateImage( item->filepath, page, imageType_, baseViewInfo.Monitor );
+            }
         }
 
     }
+
+    // Prefetch is filename-only: never create or assign components.
+    if (prefetchImagePath)
+        return false;
 
     if ( !t )
     {
@@ -1092,6 +1259,66 @@ void ScrollingList::updateScrollPeriod(  )
 }
 
 
+void ScrollingList::prefetchNearbyImages( unsigned int ahead )
+{
+    if (!items_ || items_->empty() || !scrollPoints_ ||
+        scrollPoints_->empty() || components_.empty() || ahead == 0)
+        return;
+
+    const unsigned int count =
+        static_cast<unsigned int>(items_->size());
+
+    const unsigned int visible =
+        static_cast<unsigned int>(scrollPoints_->size());
+
+    // Do not request more unique items than the collection contains.
+    const unsigned int maximum =
+        count > visible ? count - visible : 0;
+
+    if (maximum == 0)
+        return;
+
+    if (ahead > maximum)
+        ahead = maximum;
+
+    // Resolve filenames only once per collection and rail position.
+    if (hasPrefetchedPosition_ &&
+        prefetchedItems_ == items_ &&
+        prefetchedIndex_ == itemIndex_)
+        return;
+
+    ImageDecodeCache &cache = ImageDecodeCache::instance();
+
+    for (unsigned int distance = 1; distance <= ahead; ++distance)
+    {
+        const unsigned int forwardIndex =
+            loopIncrement(itemIndex_, visible + distance - 1, count);
+
+        const unsigned int backwardIndex =
+            loopDecrement(itemIndex_, distance, count);
+
+        const unsigned int indices[2] = {
+            forwardIndex, backwardIndex
+        };
+
+        for (unsigned int direction = 0; direction < 2; ++direction)
+        {
+            std::string imageFile;
+
+            // Resolve the original media filename without creating a component.
+            allocateTexture(0, items_->at(indices[direction]), &imageFile);
+
+            // A video or text fallback has no image surface to predecode.
+            if (!imageFile.empty())
+                cache.request(imageFile);
+        }
+    }
+
+    prefetchedItems_ = items_;
+    prefetchedIndex_ = itemIndex_;
+    hasPrefetchedPosition_ = true;
+}
+
 void ScrollingList::scroll( bool forward )
 {
 
@@ -1108,15 +1335,22 @@ void ScrollingList::scroll( bool forward )
     {
         Item *i    = items_->at( loopIncrement( itemIndex_, scrollPoints_->size(  ), items_->size(  ) ) );
         itemIndex_ = loopIncrement( itemIndex_, 1, items_->size(  ) );
+        Component *old = components_.at( 0 );
         deallocateTexture( 0 );
         allocateTexture( 0, i );
+        if (components_.at( 0 ) != old)
+            delete old;
     }
     else
     {
         Item *i    = items_->at( loopDecrement( itemIndex_, 1, items_->size(  ) ) );
         itemIndex_ = loopDecrement( itemIndex_, 1, items_->size(  ) );
-        deallocateTexture( loopDecrement( 0, 1, components_.size(  ) ) );
-        allocateTexture( loopDecrement( 0, 1, components_.size(  ) ), i );
+        unsigned int replaceIndex = loopDecrement( 0, 1, components_.size(  ) );
+        Component *old = components_.at( replaceIndex );
+        deallocateTexture( replaceIndex );
+        allocateTexture( replaceIndex, i );
+        if (components_.at( replaceIndex ) != old)
+            delete old;
     }
 
     // Set the animations
