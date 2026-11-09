@@ -32,6 +32,8 @@ VideoComponent * VideoBuilder::createVideo(std::string path, Page &page, std::st
     extensions.push_back("AVI");
     extensions.push_back("mkv");
     extensions.push_back("MKV");
+    extensions.push_back("webm");
+    extensions.push_back("WEBM");
     extensions.push_back("mp3");
     extensions.push_back("MP3");
     extensions.push_back("wav");

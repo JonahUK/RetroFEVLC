@@ -38,3 +38,16 @@ Artifacts/**
 __pycache__/
 *.pyc
 
+# RetroFEVLC format development exclusions
+
+# Generated third-party dependency builds
+/RetroFE/ThirdParty/libpng-1.6.59-build-x64/
+/RetroFE/ThirdParty/libwebp-1.6.0-build-x64/
+
+# Superseded APNG research files
+/RetroFE/ThirdParty/libpng-apng-1.6.37/
+
+# Development backups (preserved locally)
+/RetroFE-Format-Backups/
+*.Step*.bak
+

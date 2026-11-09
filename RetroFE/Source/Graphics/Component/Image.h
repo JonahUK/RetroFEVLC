@@ -18,6 +18,8 @@
 #include "Component.h"
 #include <SDL2/SDL.h>
 #include <string>
+#include <vector>
+#include <webp/demux.h>
 
 class Image : public Component
 {
@@ -27,9 +29,33 @@ public:
     void freeGraphicsMemory();
     void allocateGraphicsMemory();
     void draw();
+    void update(float dt) override;
 
 protected:
     SDL_Texture *texture_;
     std::string  file_;
     std::string  altFile_;
+    WebPAnimDecoder *webpDecoder_;
+    WebPData webpData_;
+    std::vector<uint8_t> webpBytes_;
+    double animationElapsedMs_;
+    int nextFrameTimestampMs_;
+    int animationTotalDurationMs_;
+    std::vector<int> webpFrameDurations_;
+    size_t currentWebPFrame_;
+    int animationLoopCount_;
+    int completedAnimationLoops_;
+    bool animatedWebP_;
+    struct APNGFrame
+    {
+        std::vector<uint8_t> pixels;
+        double durationMs;
+    };
+    std::vector<APNGFrame> apngFrames_;
+    size_t currentAPNGFrame_;
+    double apngElapsedMs_;
+    double apngNextFrameMs_;
+    int apngLoopCount_;
+    int apngCompletedLoops_;
+    bool animatedAPNG_;
 };
