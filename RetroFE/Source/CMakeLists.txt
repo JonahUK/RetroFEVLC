@@ -287,7 +287,7 @@ if(WIN32)
     # Package.py also resolves dependencies from ThirdParty and checks PE bitness.
     if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
         foreach(_dll_name SDL2.dll SDL2_image.dll SDL2_mixer.dll SDL2_ttf.dll
-                          libfreetype-6.dll zlib1.dll)
+                          libfreetype-6.dll zlib1.dll zlib.dll)
             file(GLOB_RECURSE _dll_candidates LIST_DIRECTORIES FALSE
                 "${RETROFE_THIRD_PARTY_DIR}/*/${_dll_name}")
             set(_chosen_dll "")
