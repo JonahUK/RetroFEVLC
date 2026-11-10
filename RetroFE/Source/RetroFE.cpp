@@ -2229,7 +2229,7 @@ search_.setTheme( searchTheme );
 
         // Keep the page behind the overlay alive (video, animations)
         page->update( dt );
-        if ( searchMode == "list" && search_.isClosing( ) )
+        if ( search_.isListMode( ) && search_.isClosing( ) )
         {
             if ( !searchFadeRunning )
             {
@@ -2251,7 +2251,7 @@ search_.setTheme( searchTheme );
 
     // List Search resolves the selected game directly from its original collection.
     // Page Search continues through the existing temporary results-page code below.
-    if ( searchMode == "list" )
+    if ( search_.isListMode( ) )
     {
         searchLaunchItem_ = NULL;
 

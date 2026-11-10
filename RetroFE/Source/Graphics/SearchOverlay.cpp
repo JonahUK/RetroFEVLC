@@ -191,6 +191,12 @@ SearchOverlay::~SearchOverlay( )
 void SearchOverlay::setListMode( bool enabled )
 {
     listMode_ = enabled;
+
+    // Page Mode has no results-focus zone.
+    if ( !listMode_ && zone_ == ZoneResults )
+    {
+        zone_ = ZoneKeys;
+    }
 }
 
 
@@ -521,7 +527,10 @@ void SearchOverlay::handleEvent( SDL_Event &e, UserInput &input )
             bool acted = false;
             if ( ( sym == SDLK_RETURN || sym == SDLK_KP_ENTER ) && !repeat )
             {
-                commit( );
+                if ( zone_ == ZoneMode )
+                    pressSelect( );
+                else
+                    commit( );
                 acted = true;
             }
             else
@@ -570,6 +579,32 @@ void SearchOverlay::move( int dx, int dy )
 {
     // List Mode can navigate the live results; Page Mode retains keyboard navigation.
     typedMode_ = false;
+
+    // The search-mode selector is above the on-screen keyboard.
+    if ( zone_ == ZoneMode )
+    {
+        if ( dx < 0 )
+        {
+            setListMode( true );
+        }
+        else if ( dx > 0 )
+        {
+            setListMode( false );
+        }
+        else if ( dy > 0 )
+        {
+            zone_ = ZoneKeys;
+            keyRow_ = 0;
+        }
+        return;
+    }
+
+    // Up from the first keyboard row focuses the mode selector.
+    if ( zone_ == ZoneKeys && dy < 0 && keyRow_ == 0 )
+    {
+        zone_ = ZoneMode;
+        return;
+    }
 
     if ( listMode_ && zone_ == ZoneResults )
     {
@@ -632,6 +667,13 @@ void SearchOverlay::move( int dx, int dy )
 
 void SearchOverlay::pressSelect( )
 {
+    // Select/Enter toggles the search mode when the selector has focus.
+    if ( zone_ == ZoneMode )
+    {
+        setListMode( !listMode_ );
+        return;
+    }
+
     // In List Mode, Select chooses the highlighted result when focused.
     if ( listMode_ && zone_ == ZoneResults )
     {
@@ -1584,6 +1626,38 @@ void SearchOverlay::draw( SDL_Renderer *r )
         int iw  = textW( info, ipx, false );
         text( l.titleRow.x + l.titleRow.w - iw - u / 2,
               l.titleRow.y + ( l.titleRow.h - textH( ipx, false ) ) / 2, ipx, false, info, textLow );
+
+        // Search display mode selector, centred in the header.
+        const int modeH = u * 5 / 2;
+        const int modeW = u * 13;
+        const int modeX = l.titleRow.x + ( l.titleRow.w - modeW ) / 2;
+        const int modeY = l.titleRow.y + ( l.titleRow.h - modeH ) / 2;
+        const int halfW = modeW / 2;
+        const bool modeFocused = ( zone_ == ZoneMode );
+
+        if ( modeFocused )
+        {
+            glow( modeX, modeY, modeW, modeH, u / 2, accent, 65 );
+        }
+
+        rrect( modeX, modeY, modeW, modeH, u / 2, border, 255 );
+        rrect( modeX + 1, modeY + 1, modeW - 2, modeH - 2,
+               u / 2, fieldCol, 255 );
+
+        const int selectedX = listMode_ ? modeX : modeX + halfW;
+        rrect( selectedX + 2, modeY + 2, halfW - 4, modeH - 4,
+               u / 2, accent, 255 );
+
+        const int modePx = imax( 9, u * 11 / 10 );
+        const int labelY = modeY + ( modeH - textH( modePx, true ) ) / 2;
+        const std::string listLabel = "LIST";
+        const std::string pageLabel = "PAGE";
+
+        text( modeX + ( halfW - textW( listLabel, modePx, true ) ) / 2,
+              labelY, modePx, true, listLabel, listMode_ ? accentDk : textMid );
+
+        text( modeX + halfW + ( halfW - textW( pageLabel, modePx, true ) ) / 2,
+              labelY, modePx, true, pageLabel, listMode_ ? textMid : accentDk );
     }
 
     // ---- query field ----

@@ -57,6 +57,7 @@ public:
     // bitmap font is used.
     void setFontPath( const std::string &path );
     void setListMode( bool enabled );
+    bool isListMode( ) const { return listMode_; }
     void setTheme( const std::string &name );
 
     bool isActive( ) const;
@@ -93,7 +94,8 @@ private:
     enum Zone
     {
         ZoneKeys,
-        ZoneResults
+        ZoneResults,
+        ZoneMode
     };
 
     enum Outcome
